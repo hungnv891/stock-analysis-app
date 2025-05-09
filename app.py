@@ -40,11 +40,12 @@ if st.button("Phân Tích"):
                 st.metric("Dòng tiền ròng (VND)", summary['Dòng tiền ròng (VND)'])
                 st.metric("Tổng số lệnh mua", summary['Tổng số lệnh mua'])
                 st.metric("Tổng số lệnh bán", summary['Tổng số lệnh bán'])
+                st.metric("Tỷ lệ mua/bán", f"{summary['Tỷ lệ khối lượng trung bình mua/bán']:,.2f}")
                 
             with col2:
+                st.metric("Tổng khối lượng", f"{summary['Tổng khối lượng giao dịch']:,.0f}")
                 st.metric("Khối lượng TB lệnh mua", f"{summary['Khối lượng trung bình lệnh mua']:,.2f}")
-                st.metric("Khối lượng TB lệnh bán", f"{summary['Khối lượng trung bình lệnh bán']:,.2f}")
-                st.metric("Tỷ lệ mua/bán", f"{summary['Tỷ lệ khối lượng trung bình mua/bán']:,.2f}")
+                st.metric("Khối lượng TB lệnh bán", f"{summary['Khối lượng trung bình lệnh bán']:,.2f}")                
                 st.metric("Giá cao nhất", f"{summary['Giá cao nhất']:,.2f}")
                 st.metric("Giá thấp nhất", f"{summary['Giá thấp nhất']:,.2f}")
 
