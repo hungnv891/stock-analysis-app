@@ -19,7 +19,6 @@ os.makedirs("output", exist_ok=True)
 
 def format_currency(value):
     return "{:,.0f}".format(value).replace(",", ".")
-    
 
 def analyze_stock(symbol, selected_date=None):
     chart_paths = []  # Đảm bảo đã khai báo
@@ -38,7 +37,7 @@ def analyze_stock(symbol, selected_date=None):
             try:
                 # Lấy dữ liệu từ API
                 stock = Vnstock().stock(symbol=symbol, source='TCBS')
-                data = stock.quote.intraday(symbol=symbol, page_size=2_000, show_log=False)
+                data = stock.quote.intraday(symbol=symbol, page_size=10_000, show_log=False)
                 
                 # Kiểm tra dữ liệu hợp lệ
                 if data.empty:
@@ -106,7 +105,6 @@ def analyze_stock(symbol, selected_date=None):
                     'Tổng dòng tiền vào (VND)': format_currency(resampled['in_flow'].sum()),
                     'Tổng dòng tiền ra (VND)': format_currency(resampled['out_flow'].sum()),
                     'Dòng tiền ròng (VND)': format_currency(resampled['net_flow'].sum()),
-                    'Tổng khối lượng giao dịch': df['volume'].sum(),
                     'Tổng số lệnh mua': int(resampled['buy_count'].sum()),
                     'Tổng số lệnh bán': int(resampled['sell_count'].sum()),
                     'Khối lượng trung bình lệnh mua': resampled['avg_buy_volume'].mean(),
