@@ -37,7 +37,7 @@ def analyze_stock(symbol, selected_date=None):
             try:
                 # Lấy dữ liệu từ API
                 stock = Vnstock().stock(symbol=symbol, source='TCBS')
-                data = stock.quote.intraday(symbol=symbol, page_size=10_000, show_log=False)
+                data = stock.quote.intraday(symbol=symbol, page_size=2_000, show_log=False)
                 
                 # Kiểm tra dữ liệu hợp lệ
                 if data.empty:
