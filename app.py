@@ -59,6 +59,7 @@ with tab1:
                             os.remove(path)  # XÓA FILE sau khi đã hiển thị
                         else:
                             st.warning(f"Không tìm thấy biểu đồ: {path}")
+                            
 
                 excel_path = export_to_excel(resampled, df, symbol, selected_date)
                 if excel_path and os.path.exists(excel_path):
@@ -256,17 +257,44 @@ with tab4:
     period = st.selectbox("Chọn chu kỳ:", ["year", "quarter"], index=0)
     lang = st.radio("Ngôn ngữ hiển thị:", ["vi", "en"], horizontal=True)
 
-    if st.button("🔍 Phân Tích", key="analyze_tab4"):
+    if st.button("🔍 Lấy dữ liệu", key="analyze_tab4"):
         try:
             from vnstock import Vnstock
             stock = Vnstock().stock(symbol=symbol, source='VCI')
-            df = stock.finance.ratio(period=period, lang=lang, dropna=True)
-            if df is not None and not df.empty:
-                st.success("Dữ liệu tài chính đã được lấy thành công!")
-                st.dataframe(df, use_container_width=True)
-                
-
+            
+            
+            # 1. Hiển thị bảng chỉ số tài chính
+            st.subheader("📈 Chỉ số tài chính")
+            df_ratio = stock.finance.ratio(period=period, lang=lang, dropna=True)
+            if df_ratio is not None and not df_ratio.empty:
+                st.success("Dữ liệu chỉ số tài chính đã được lấy thành công!")
+                st.dataframe(df_ratio, use_container_width=True)
             else:
-                st.warning("Không có dữ liệu tài chính cho mã này.")
+                st.warning("Không có dữ liệu chỉ số tài chính cho mã này.")
+                    
+                # 2. Bảng cân đối kế toán
+            st.subheader("💰 Bảng cân đối kế toán")
+            df_balance = stock.finance.balance_sheet(period=period, lang=lang, dropna=True)
+            if df_balance is not None and not df_balance.empty:
+                st.dataframe(df_balance, use_container_width=True)
+            else:
+                st.warning("Không có dữ liệu bảng cân đối kế toán.")
+            
+            # 3. Báo cáo kết quả kinh doanh
+            st.subheader("📊 Báo cáo kết quả kinh doanh")
+            df_income = stock.finance.income_statement(period=period, lang=lang, dropna=True)
+            if df_income is not None and not df_income.empty:
+                st.dataframe(df_income, use_container_width=True)
+            else:
+                st.warning("Không có dữ liệu báo cáo kết quả kinh doanh.")
+            
+            # 4. Báo cáo lưu chuyển tiền tệ
+            st.subheader("💵 Báo cáo lưu chuyển tiền tệ")
+            df_cashflow = stock.finance.cash_flow(period=period, lang=lang, dropna=True)
+            if df_cashflow is not None and not df_cashflow.empty:
+                st.dataframe(df_cashflow, use_container_width=True)
+            else:
+                st.warning("Không có dữ liệu báo cáo lưu chuyển tiền tệ.")
+            
         except Exception as e:
             st.error(f"Đã xảy ra lỗi khi lấy dữ liệu: {e}")
