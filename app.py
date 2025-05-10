@@ -4,8 +4,9 @@ import os
 import pandas as pd
 from datetime import date
 
+
 st.set_page_config(page_title='Phân Tích Cổ Phiếu', layout='wide')
-tab1, tab2, tab3 = st.tabs(['📈 Phân Tích Từng Mã', '🏭 Dòng Tiền Theo Nhóm Ngành', '📝 Phân Tích Tùy Chọn'])
+tab1, tab2, tab3, tab4 = st.tabs(['📈 Phân Tích Từng Mã', '🏭 Dòng Tiền Theo Nhóm Ngành', '📝 Nhập Mã Tùy Chọn', '📊 Phân Tích Cơ Bản'])
 
 
 # ==== TAB 1 ====
@@ -239,3 +240,32 @@ with tab3:
                 st.altair_chart(chart, use_container_width=True)
             else:
                 st.warning("Không thể phân tích các mã đã nhập.")
+                
+# ==== TAB 4 ====
+
+with tab4:
+    st.title("📊 Phân Tích Chỉ Số Tài Chính Cơ Bản")
+
+    st.markdown("""
+    Nhập mã cổ phiếu để xem các chỉ số tài chính như ROE, ROA, EPS, Nợ/Vốn chủ sở hữu, v.v.  
+    Nguồn dữ liệu: VCI (vnstock)
+    """)
+
+    symbol = st.text_input("Nhập mã cổ phiếu:", value="VNM", key="symbol_tab4").strip().upper()
+    period = st.selectbox("Chọn chu kỳ:", ["year", "quarter"], index=0)
+    lang = st.radio("Ngôn ngữ hiển thị:", ["vi", "en"], horizontal=True)
+
+    if st.button("🔍 Phân Tích", key="analyze_tab4"):
+        try:
+            from vnstock import Vnstock
+            stock = Vnstock().stock(symbol=symbol, source='VCI')
+            df = stock.finance.ratio(period=period, lang=lang, dropna=True)
+            if df is not None and not df.empty:
+                st.success("Dữ liệu tài chính đã được lấy thành công!")
+                st.dataframe(df, use_container_width=True)
+                
+
+            else:
+                st.warning("Không có dữ liệu tài chính cho mã này.")
+        except Exception as e:
+            st.error(f"Đã xảy ra lỗi khi lấy dữ liệu: {e}")
