@@ -7,12 +7,13 @@ from vnstock import Vnstock
 import plotly.graph_objects as go
 
 st.set_page_config(page_title='Phân Tích Cổ Phiếu', layout='wide')
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     '📈 Dòng Tiền Theo Từng Mã',
     '🏭 Dòng Tiền Theo Nhóm Ngành',
     '📝 Nhập Mã Tùy Chọn',
     '📊 Phân Tích Cơ Bản',
-    '📉 Biểu Đồ Giá'
+    '📉 Biểu Đồ Giá',
+    '📈 Cập nhật Giá Cổ Phiếu Realtime'
 ])
 
 
