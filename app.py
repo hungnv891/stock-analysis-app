@@ -464,7 +464,81 @@ with tab5:
         except Exception as e:
             st.error(f"Đã xảy ra lỗi: {e}")
 
+# ==== TAB 6 ====  
+with tab6:
+    st.title("📈 Cập nhật Giá Cổ Phiếu Realtime")
+    
+    st.markdown("Nhập mã cổ phiếu để xem dữ liệu giao dịch realtime theo 5 phút.")
+    
+    symbol = st.text_input("Nhập mã cổ phiếu:", value="VNM", key="symbol_tab6").strip().upper()
+    
+    # Tùy chọn số lượng dữ liệu trả về
+    page_size = st.number_input("Chọn số lượng bản ghi:", min_value=1, max_value=50000, value=10000)
+    
+    # Lấy và hiển thị thông tin realtime khi nhấn nút
+    if st.button("📊 Hiển thị giá cổ phiếu realtime", key="btn_tab6"):
+        try:
+            # Khởi tạo đối tượng stock
+            stock = Vnstock().stock(symbol=symbol, source='VCI')
 
+            # Lấy dữ liệu giao dịch intraday (thời gian thực)
+            df_realtime = stock.quote.intraday(symbol=symbol, page_size=page_size)
+
+            if df_realtime is None or df_realtime.empty:
+                st.warning(f"Không có dữ liệu giao dịch realtime cho mã cổ phiếu {symbol}.")
+            else:
+                # Chuyển đổi dữ liệu thời gian về đúng định dạng
+                df_realtime['time'] = pd.to_datetime(df_realtime['time'])
+                
+                # Thiết lập thời gian 5 phút
+                df_realtime.set_index('time', inplace=True)
+                df_realtime['5_min_interval'] = df_realtime.index.floor('5T')  # Chuyển các thời gian về khung 5 phút
+                
+                # Tính toán volume buy và volume sell dựa trên match_type
+                df_realtime['volume_buy'] = df_realtime.apply(lambda row: row['volume'] if row['match_type'] == 'Buy' else 0, axis=1)
+                df_realtime['volume_sell'] = df_realtime.apply(lambda row: row['volume'] if row['match_type'] == 'Sell' else 0, axis=1)
+                
+                # Nhóm theo khung thời gian 5 phút và tính toán các giá trị cần thiết
+                df_grouped = df_realtime.groupby('5_min_interval').agg(
+                    volume_buy=('volume_buy', 'sum'),  # Tổng volume của các giao dịch mua
+                    volume_sell=('volume_sell', 'sum'),  # Tổng volume của các giao dịch bán
+                    avg_price=('price', 'mean')  # Tính giá trung bình (mean)
+                ).reset_index()
+
+                # Tính toán net (volume_buy - volume_sell)
+                df_grouped['net'] = df_grouped['volume_buy'] - df_grouped['volume_sell']
+                
+                # Tính tổng các giá trị
+                total_volume_buy = df_grouped['volume_buy'].sum()
+                total_volume_sell = df_grouped['volume_sell'].sum()
+                total_net = df_grouped['net'].sum()
+                avg_price_total = df_grouped['avg_price'].mean()
+                
+                # Hiển thị tổng các giá trị
+                st.markdown(f"### Tổng Dữ Liệu Giao Dịch (Cổ Phiếu: {symbol})")
+                st.markdown(f"- **Tổng volume mua:** {total_volume_buy:,.0f}")
+                st.markdown(f"- **Tổng volume bán:** {total_volume_sell:,.0f}")
+                st.markdown(f"- **Tổng net (Mua - Bán):** {total_net:,.0f}")
+                st.markdown(f"- **Giá trung bình:** {avg_price_total:,.2f}")
+
+                # Sắp xếp cột theo thứ tự yêu cầu
+                df_grouped = df_grouped[['5_min_interval', 'avg_price', 'volume_buy', 'volume_sell', 'net']]
+                df_grouped.rename(columns={'5_min_interval': 'time'}, inplace=True)
+
+                # Hiển thị bảng dữ liệu theo yêu cầu
+                st.write(f"Thông tin giá cổ phiếu {symbol} realtime theo từng khoảng 5 phút:")
+                st.dataframe(df_grouped.style.format({'avg_price': '{:,.2f}', 'volume_buy': '{:,.0f}', 'volume_sell': '{:,.0f}', 'net': '{:,.0f}'}), use_container_width=True)
+                
+                # Tùy chọn tải về dữ liệu
+                st.download_button(
+                    label="📥 Tải dữ liệu realtime (.CSV)",
+                    data=df_grouped.to_csv(index=False).encode("utf-8"),
+                    file_name=f"{symbol}_gia_realtime_5phut.csv",
+                    mime="text/csv"
+                )
+
+        except Exception as e:
+            st.error(f"Đã xảy ra lỗi khi lấy dữ liệu realtime: {e}")
 
 
             
