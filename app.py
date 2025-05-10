@@ -56,6 +56,7 @@ with tab1:
                     for path in chart_paths:
                         if os.path.exists(path):
                             st.image(path, use_container_width=True)
+                            os.remove(path)  # XÓA FILE sau khi đã hiển thị
                         else:
                             st.warning(f"Không tìm thấy biểu đồ: {path}")
 
