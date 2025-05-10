@@ -85,10 +85,10 @@ with tab2:
     st.title('🏭 Theo Dõi Dòng Tiền Theo Nhóm Ngành')
 
     sector_map = {
-        'Ngân hàng': ['VCB', 'CTG', 'BID', 'TCB', 'MBB', 'ACB', 'HDB'],
-        'Chứng khoán': ['SSI', 'VND', 'HCM', 'VCI', 'FTS', 'CTS'],
+        'Ngân hàng': ['VCB', 'CTG', 'BID', 'TCB', 'MBB', 'ACB', 'HDB', 'LPB', 'SHB', 'STB'],
+        'Chứng khoán': ['SSI', 'VND', 'HCM', 'VCI', 'FTS', 'CTS', 'MBS', 'SHS', 'BSI', 'VIX'],
         'Thép': ['HPG', 'HSG', 'NKG', 'TLH'],
-        'Bất động sản': ['VIC', 'VHM', 'NLG', 'KDH', 'DXG', 'HDG'],
+        'Bất động sản': ['VIC', 'VHM', 'NLG', 'KDH', 'DXG', 'HDG', 'LDG', 'HDC', 'NVL', 'LHG'],
         'Công nghệ': ['FPT', 'CMG', 'CTR', 'VGI'],
         'Bán lẻ': ['MSN', 'MWG', 'DGW', 'PNJ', 'FRT'],
         'Điện nước': ['BWE', 'NT2', 'POW', 'PC1', 'DQC'],
@@ -101,8 +101,9 @@ with tab2:
         'Dệt may': ['MSH', 'TCM', 'TNG', 'VGT', 'STK'],
         'Cao su': ['GVR', 'DPR', 'HRC', 'PHR'],
         'Dược phẩm': ['DCL', 'DHG', 'IMP', 'TRA', 'DVN'],
-        'Vận tải': ['PVT', 'HAH', 'GMD', 'VNS'],
+        'Vận tải': ['PVT', 'HAH', 'GMD', 'VNS', 'VSC'],
         'Nhựa': ['AAA', 'BMP', 'NTP', 'DNP'],
+        'Khu CN': ['KBC', 'SZC', 'TIP', 'BCM', 'VGC', 'IDC'],
         'Phân bón': ['DGC', 'DPM', 'DCM', 'BFC', 'LAS']
     }
 
