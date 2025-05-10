@@ -5,7 +5,8 @@ import pandas as pd
 from datetime import date
 
 st.set_page_config(page_title='Phân Tích Cổ Phiếu', layout='wide')
-tab1, tab2 = st.tabs(['📈 Phân Tích Từng Mã', '🏭 Dòng Tiền Theo Nhóm Ngành'])
+tab1, tab2, tab3 = st.tabs(['📈 Phân Tích Từng Mã', '🏭 Dòng Tiền Theo Nhóm Ngành', '📝 Phân Tích Tùy Chọn'])
+
 
 # ==== TAB 1 ====
 with tab1:
@@ -179,3 +180,62 @@ with tab2:
             st.altair_chart(chart, use_container_width=True)
         else:
             st.warning("Không thể phân tích dòng tiền nhóm ngành này.")
+
+# ==== TAB 3 ====
+with tab3:
+    st.title('📝 Phân Tích Dòng Tiền Theo Danh Sách Tùy Chọn')
+
+    st.markdown("Nhập tối đa **10 mã cổ phiếu**, cách nhau bởi dấu phẩy (`,`)")
+
+    custom_input = st.text_input("Nhập mã cổ phiếu:", placeholder="VD: VNM, SSI, FPT, HPG")
+    selected_date_custom = st.date_input('Chọn ngày giao dịch:', value=date.today(), key='date_custom')
+    analyze_custom_button = st.button('🔍 Phân Tích Danh Sách')
+
+    if analyze_custom_button:
+        symbols = [s.strip().upper() for s in custom_input.split(",") if s.strip()]
+        symbols = list(dict.fromkeys(symbols))
+        if len(symbols) == 0:
+            st.warning("Vui lòng nhập ít nhất 1 mã cổ phiếu.")
+        elif len(symbols) > 10:
+            st.error("Chỉ phân tích tối đa 10 mã cổ phiếu.")
+        else:
+            st.info(f"Đang phân tích {len(symbols)} mã...")
+
+            with st.spinner("Đang xử lý..."):
+                with ThreadPoolExecutor(max_workers=6) as executor:
+                    futures = [executor.submit(process_symbol, sym, selected_date_custom) for sym in symbols]
+                    results = [f.result() for f in futures if f.result() is not None]
+
+            if results:
+                df_custom = pd.DataFrame(results)
+                df_display = df_custom.copy()
+                for col in ['in', 'out', 'net']:
+                    df_display[col] = df_display[col].map(lambda x: f"{x:,.0f}".replace(",", "."))
+
+                st.subheader("📋 Bảng Dòng Tiền (VND)")
+                st.dataframe(df_display, use_container_width=True)
+
+                import altair as alt
+
+                st.subheader('📊 Biểu Đồ Dòng Tiền')
+
+                df_melted = df_custom.melt(id_vars="symbol", value_vars=["in", "out"], var_name="type", value_name="value")
+
+                bars = alt.Chart(df_melted).mark_bar().encode(
+                    x=alt.X('symbol:N', title='Mã cổ phiếu'),
+                    xOffset='type:N',
+                    y=alt.Y('value:Q', title='VND'),
+                    color=alt.Color('type:N', scale=alt.Scale(domain=['in', 'out'], range=['#2E86AB', '#E74C3C'])),
+                    tooltip=['symbol', 'type', alt.Tooltip('value:Q', format=',')]
+                ).properties(width=700, height=400)
+
+                line = alt.Chart(df_custom).mark_line(color='purple', strokeWidth=3).encode(
+                    x=alt.X('symbol:N'),
+                    y=alt.Y('net:Q'),
+                    tooltip=['symbol', alt.Tooltip('net:Q', format=',')]
+                )
+
+                chart = (bars + line).resolve_scale(y='shared').properties(width=700, height=400)
+                st.altair_chart(chart, use_container_width=True)
+            else:
+                st.warning("Không thể phân tích các mã đã nhập.")
