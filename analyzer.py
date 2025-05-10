@@ -36,7 +36,7 @@ def analyze_stock(symbol, selected_date=None):
         for attempt in range(max_retries):
             try:
                 # Lấy dữ liệu từ API
-                stock = Vnstock().stock(symbol=symbol, source='TCBS')
+                stock = Vnstock().stock(symbol=symbol, source='VCI')
                 data = stock.quote.intraday(symbol=symbol, page_size=2_000, show_log=False)
                 
                 # Kiểm tra dữ liệu hợp lệ
