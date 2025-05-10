@@ -114,6 +114,9 @@ with tab2:
                     if isinstance(value, str):
                         return float(value.replace(".", "").replace(",", "").replace("−", "-"))
                     return float(value)
+                    
+                def format_number(value):
+                    return "{:,.0f}".format(value).replace(",", ".")    
 
                 in_flow = parse_currency(result['summary']['Tổng dòng tiền vào (VND)'])
                 out_flow = parse_currency(result['summary']['Tổng dòng tiền ra (VND)'])
@@ -133,41 +136,46 @@ with tab2:
 
         if results:
             df_sector = pd.DataFrame(results)
-            st.dataframe(df_sector, use_container_width=True)
+            # Tạo bản hiển thị đã định dạng số kiểu 1.000.000
+            df_display = df_sector.copy()
+            for col in ['in', 'out', 'net']:
+                df_display[col] = df_display[col].map(lambda x: f"{x:,.0f}".replace(",", "."))
+
+            # Hiển thị bảng định dạng
+            st.subheader("📋 Bảng Dòng Tiền (VND)")
+            st.dataframe(df_display, use_container_width=True)
 
             import altair as alt
 
             st.subheader(f'📊 Biểu Đồ Dòng Tiền Nhóm: {selected_sector}')
 
-            # Tạo DataFrame dạng long format cho biểu đồ
+            # Dữ liệu dạng long cho biểu đồ cột
             df_melted = df_sector.melt(id_vars="symbol", value_vars=["in", "out"], var_name="type", value_name="value")
-            
-            # Tạo biểu đồ cột cho dòng tiền vào và ra
+
             bars = alt.Chart(df_melted).mark_bar().encode(
                 x=alt.X('symbol:N', title='Mã cổ phiếu'),
+                xOffset='type:N',
                 y=alt.Y('value:Q', title='VND'),
-                color=alt.Color('type:N', scale=alt.Scale(domain=['in', 'out'], range=['green', 'red'])),
-                tooltip=['symbol', 'type', 'value']
+                color=alt.Color('type:N', scale=alt.Scale(domain=['in', 'out'], range=['#2E86AB', '#E74C3C'])),
+                tooltip=['symbol', 'type', alt.Tooltip('value:Q', format=',')]
             ).properties(
                 width=700,
                 height=400
             )
-            
-            # Tạo biểu đồ đường cho dòng tiền ròng
+
             line = alt.Chart(df_sector).mark_line(color='purple', strokeWidth=3).encode(
                 x=alt.X('symbol:N', title='Mã cổ phiếu'),
                 y=alt.Y('net:Q', title='VND'),
-                tooltip=['symbol', 'net']
+                tooltip=['symbol', alt.Tooltip('net:Q', format=',')]
             )
-            
-            # Kết hợp biểu đồ
+
             chart = (bars + line).properties(
                 width=700,
                 height=400
             ).resolve_scale(
                 y='shared'
             )
-            
+
             st.altair_chart(chart, use_container_width=True)
         else:
             st.warning("Không thể phân tích dòng tiền nhóm ngành này.")
