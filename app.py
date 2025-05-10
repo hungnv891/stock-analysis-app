@@ -3,10 +3,17 @@ from analyzer import analyze_stock, export_to_excel
 import os
 import pandas as pd
 from datetime import date
-
+from vnstock import Vnstock
+import plotly.graph_objects as go
 
 st.set_page_config(page_title='Phân Tích Cổ Phiếu', layout='wide')
-tab1, tab2, tab3, tab4 = st.tabs(['📈 Phân Tích Từng Mã', '🏭 Dòng Tiền Theo Nhóm Ngành', '📝 Nhập Mã Tùy Chọn', '📊 Phân Tích Cơ Bản'])
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    '📈 Dòng Tiền Theo Từng Mã',
+    '🏭 Dòng Tiền Theo Nhóm Ngành',
+    '📝 Nhập Mã Tùy Chọn',
+    '📊 Phân Tích Cơ Bản',
+    '📉 Biểu Đồ Giá'
+])
 
 
 # ==== TAB 1 ====
@@ -299,3 +306,165 @@ with tab4:
             
         except Exception as e:
             st.error(f"Đã xảy ra lỗi khi lấy dữ liệu: {e}")
+            
+            
+          
+# ==== TAB 5 ====            
+with tab5:
+    st.title("📉 Biểu Đồ Nến Nhật – Giá Cổ Phiếu")
+
+    st.markdown("Chọn mã cổ phiếu, khoảng thời gian và khung thời gian để xem biểu đồ giá.")
+
+    symbol = st.text_input("Nhập mã cổ phiếu:", value="VNM", key="symbol_tab5").strip().upper()
+    start_date = st.date_input("Ngày bắt đầu", value=date(2025, 1, 1))
+    end_date = st.date_input("Ngày kết thúc", value=date.today())
+
+    timeframe = st.selectbox("Khung thời gian:", options=["D", "W", "M"], index=0, 
+                             format_func=lambda x: {"D": "Ngày", "W": "Tuần", "M": "Tháng"}[x])
+
+    # Tùy chọn hiển thị các đường MA
+    show_ma5 = st.checkbox("Hiển thị MA 5", value=True)
+    show_ma20 = st.checkbox("Hiển thị MA 20", value=True)
+    show_ma50 = st.checkbox("Hiển thị MA 50", value=True)
+
+    if st.button("📊 Hiển thị biểu đồ", key="btn_tab5"):
+        try:
+            from vnstock import Vnstock
+            import plotly.graph_objects as go
+
+            stock = Vnstock().stock(symbol=symbol, source='VCI')
+            df_candle = stock.quote.history(start=str(start_date), end=str(end_date))
+
+            if df_candle is None or df_candle.empty or 'time' not in df_candle.columns:
+                st.warning("Không có dữ liệu cho mã cổ phiếu và khoảng thời gian đã chọn.")
+            else:
+                df_candle['time'] = pd.to_datetime(df_candle['time'])
+                df_candle.set_index('time', inplace=True)
+
+                if timeframe in ['W', 'M']:
+                    df_candle = df_candle.resample(timeframe).agg({
+                        'open': 'first',
+                        'high': 'max',
+                        'low': 'min',
+                        'close': 'last',
+                        'volume': 'sum'
+                    }).dropna()
+
+                df_candle.reset_index(inplace=True)
+                
+                # Chuyển đổi thời gian sang định dạng ngày ngắn gọn
+                df_candle['time'] = pd.to_datetime(df_candle['time']).dt.strftime('%d-%m')
+
+                # Tính các đường MA
+                df_candle['MA5'] = df_candle['close'].rolling(window=5).mean()
+                df_candle['MA20'] = df_candle['close'].rolling(window=20).mean()
+                df_candle['MA50'] = df_candle['close'].rolling(window=50).mean()
+
+                fig = go.Figure(data=[go.Candlestick(
+                    x=df_candle['time'],
+                    open=df_candle['open'],
+                    high=df_candle['high'],
+                    low=df_candle['low'],
+                    close=df_candle['close'],
+                    increasing_line_color='green',
+                    decreasing_line_color='red',
+                    name='Nến Nhật'
+                )])
+
+                # Thêm các đường MA nếu người dùng chọn hiển thị
+                if show_ma5:
+                    fig.add_trace(go.Scatter(
+                        x=df_candle['time'],
+                        y=df_candle['MA5'],
+                        mode='lines',
+                        name='MA 5',
+                        line=dict(color='blue', width=2)
+                    ))
+
+                if show_ma20:
+                    fig.add_trace(go.Scatter(
+                        x=df_candle['time'],
+                        y=df_candle['MA20'],
+                        mode='lines',
+                        name='MA 20',
+                        line=dict(color='orange', width=2)
+                    ))
+
+                if show_ma50:
+                    fig.add_trace(go.Scatter(
+                        x=df_candle['time'],
+                        y=df_candle['MA50'],
+                        mode='lines',
+                        name='MA 50',
+                        line=dict(color='purple', width=2)
+                    ))
+
+                fig.update_layout(
+                    title=f'Biểu đồ Nến Nhật: {symbol} ({ {"D":"Ngày","W":"Tuần","M":"Tháng"}[timeframe] })',
+                    xaxis_title='Ngày',
+                    yaxis_title='Giá',
+                    xaxis_rangeslider_visible=False,
+                    height=500,
+                    margin=dict(l=0, r=0, t=40, b=0),  # Loại bỏ các khoảng trống
+                    xaxis=dict(
+                        showgrid=False,
+                        zeroline=False,
+                        type='category',  # Loại bỏ các ngày không có giao dịch
+                        tickmode='array',
+                        tickvals=df_candle['time'],  # Hiển thị các giá trị có dữ liệu
+                        tickangle=45  # Góc quay các nhãn để tránh chồng chéo
+                    ),
+                    yaxis=dict(
+                        showgrid=False,
+                        zeroline=False
+                    )
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Biểu đồ khối lượng
+                fig_volume = go.Figure()
+                fig_volume.add_trace(go.Bar(
+                    x=df_candle['time'],
+                    y=df_candle['volume'],
+                    marker_color='orange',
+                    name='Khối lượng'
+                ))
+
+                fig_volume.update_layout(
+                    title='📊 Khối Lượng Giao Dịch',
+                    xaxis_title='Ngày',
+                    yaxis_title='Khối lượng',
+                    height=300,
+                    margin=dict(l=0, r=0, t=40, b=0),  # Loại bỏ các khoảng trống
+                    xaxis=dict(
+                        showgrid=False,
+                        zeroline=False,
+                        type='category',  # Loại bỏ các ngày không có giao dịch
+                        tickmode='array',
+                        tickvals=df_candle['time'],  # Hiển thị các giá trị có dữ liệu
+                        tickangle=45  # Góc quay các nhãn để tránh chồng chéo
+                    ),
+                    yaxis=dict(
+                        showgrid=False,
+                        zeroline=False
+                    )
+                )
+
+                # Hiển thị biểu đồ khối lượng
+                st.plotly_chart(fig_volume, use_container_width=True)
+
+                st.download_button(
+                    label="📥 Tải dữ liệu giá lịch sử (.CSV)",
+                    data=df_candle.to_csv(index=False).encode("utf-8"),
+                    file_name=f"{symbol}_gia_lich_su_{timeframe}.csv",
+                    mime="text/csv"
+                )
+
+        except Exception as e:
+            st.error(f"Đã xảy ra lỗi: {e}")
+
+
+
+
+            
