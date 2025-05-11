@@ -5,90 +5,24 @@ import pandas as pd
 from datetime import date
 from vnstock import Vnstock
 import plotly.graph_objects as go
+import plotly.express as px
+import matplotlib.pyplot as plt
+import seaborn as sns
+from concurrent.futures import ThreadPoolExecutor
+
 
 st.set_page_config(page_title='Phân Tích Cổ Phiếu', layout='wide')
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-    '📈 Dòng Tiền Theo Từng Mã',
+tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     '🏭 Dòng Tiền Theo Nhóm Ngành',
     '📝 Nhập Mã Tùy Chọn',
     '📊 Phân Tích Cơ Bản',
     '📉 Biểu Đồ Giá',
-    '📈 Cập nhật Giá Cổ Phiếu Realtime'
+    '📈 Cập nhật Giá Cổ Phiếu Realtime',
+    '💧 Phân Tích Dòng Tiền Theo Phút'
 ])
 
 
-# ==== TAB 1 ====
-with tab1:
-    st.title("📊 Phân Tích Dòng Tiền Cổ Phiếu")
-
-    st.markdown("""
-    Nhập mã cổ phiếu (ví dụ: **VNM**, **SSI**, **FPT**) và chọn ngày để phân tích giao dịch từ nguồn TCBS.
-    """)
-
-    symbol = st.text_input("Nhập mã cổ phiếu:", value="VNM").strip().upper()
-    selected_date = st.date_input("Chọn ngày giao dịch:", value=date.today())
-
-    if st.button("Phân Tích"):
-        if symbol:
-            with st.spinner("Đang tải và phân tích dữ liệu..."):
-                result = analyze_stock(symbol, selected_date)
-
-            if result is not None:
-                summary = result['summary']
-                resampled = result['resampled']
-                df = result['df']
-                chart_paths = result['chart_paths']
-
-                st.success("Phân tích hoàn tất!")
-                
-                # Hiển thị phần tóm tắt
-                st.subheader("📊 Tóm Tắt Phân Tích")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Tổng dòng tiền vào (VND)", summary['Tổng dòng tiền vào (VND)'])
-                    st.metric("Tổng dòng tiền ra (VND)", summary['Tổng dòng tiền ra (VND)'])
-                    st.metric("Dòng tiền ròng (VND)", summary['Dòng tiền ròng (VND)'])
-                    st.metric("Tổng số lệnh mua", summary['Tổng số lệnh mua'])
-                    st.metric("Tổng số lệnh bán", summary['Tổng số lệnh bán'])
-
-                with col2:
-                    st.metric("Khối lượng TB lệnh mua", f"{summary['Khối lượng trung bình lệnh mua']:,.2f}")
-                    st.metric("Khối lượng TB lệnh bán", f"{summary['Khối lượng trung bình lệnh bán']:,.2f}")
-                    st.metric("Tỷ lệ mua/bán", f"{summary['Tỷ lệ khối lượng trung bình mua/bán']:,.2f}")
-                    st.metric("Giá cao nhất", f"{summary['Giá cao nhất']:,.2f}")
-                    st.metric("Giá thấp nhất", f"{summary['Giá thấp nhất']:,.2f}")
-
-                if chart_paths:
-                    st.subheader("📈 Biểu đồ phân tích:")
-                    for path in chart_paths:
-                        if os.path.exists(path):
-                            st.image(path, use_container_width=True)
-                            os.remove(path)  # XÓA FILE sau khi đã hiển thị
-                        else:
-                            st.warning(f"Không tìm thấy biểu đồ: {path}")
-                            
-
-                excel_path = export_to_excel(resampled, df, symbol, selected_date)
-                if excel_path and os.path.exists(excel_path):
-                    st.subheader("📥 Tải xuống dữ liệu:")
-                    with open(excel_path, "rb") as f:
-                        st.download_button(
-                            label="📊 Tải Excel kết quả",
-                            data=f,
-                            file_name=os.path.basename(excel_path),
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        )
-                else:
-                    st.warning("Không thể tạo file Excel.")
-            else:
-                st.error("Không thể phân tích mã cổ phiếu này. Hãy thử lại với mã khác.")
-        else:
-            st.warning("Vui lòng nhập mã cổ phiếu.")
-
 # ==== TAB 2 ====
-from concurrent.futures import ThreadPoolExecutor
-
 with tab2:
     st.title('🏭 Theo Dõi Dòng Tiền Theo Nhóm Ngành')
 
@@ -121,20 +55,57 @@ with tab2:
 
     def process_symbol(symbol, selected_date):
         try:
-            result = analyze_stock(symbol, selected_date)
-            if result:
-                def parse_currency(value):
-                    if isinstance(value, str):
-                        return float(value.replace(".", "").replace(",", "").replace("−", "-"))
-                    return float(value)
-                    
-                def format_number(value):
-                    return "{:,.0f}".format(value).replace(",", ".")    
+            # Khởi tạo đối tượng lấy dữ liệu intraday
+            stock = Vnstock().stock(symbol=symbol, source='VCI')
+            df_intraday = stock.quote.intraday(symbol=symbol, page_size=10000)
 
-                in_flow = parse_currency(result['summary']['Tổng dòng tiền vào (VND)'])
-                out_flow = parse_currency(result['summary']['Tổng dòng tiền ra (VND)'])
-                net_flow = parse_currency(result['summary']['Dòng tiền ròng (VND)'])
-                return {"symbol": symbol, "in": in_flow, "out": out_flow, "net": net_flow}
+            if df_intraday is None or df_intraday.empty:
+                st.warning(f"Không có dữ liệu intraday cho mã {symbol}.")
+                return None
+
+            # Chuyển đổi dữ liệu về dạng thời gian
+            df_intraday['time'] = pd.to_datetime(df_intraday['time'])
+            df_intraday.set_index('time', inplace=True)
+
+            # Gộp theo từng phút
+            df_intraday['minute'] = df_intraday.index.floor('T')  # 'T' là viết tắt cho 'minutely'
+
+            # Tính volume mua & bán
+            df_intraday['volume_buy'] = df_intraday.apply(lambda x: x['volume'] if x['match_type'] == 'Buy' else 0, axis=1)
+            df_intraday['volume_sell'] = df_intraday.apply(lambda x: x['volume'] if x['match_type'] == 'Sell' else 0, axis=1)
+
+            # Nhóm theo từng phút
+            df_min = df_intraday.groupby('minute').agg(
+                volume_buy=('volume_buy', 'sum'),
+                volume_sell=('volume_sell', 'sum'),
+                avg_price=('price', 'mean')
+            ).reset_index()
+
+            # Tính dòng tiền (Value = Giá * Volume)
+            df_min['value_buy'] = df_min['volume_buy'] * df_min['avg_price'] * 1000
+            df_min['value_sell'] = df_min['volume_sell'] * df_min['avg_price'] * 1000
+            df_min['net'] = df_min['volume_buy'] - df_min['volume_sell']
+            df_min['net_value'] = df_min['value_buy'] - df_min['value_sell']
+
+            # Tính khối lượng mua/bán lũy kế
+            df_min['cumulative_value_buy'] = df_min['value_buy'].cumsum()
+            df_min['cumulative_value_sell'] = df_min['value_sell'].cumsum()
+            df_min['cumulative_value_net'] = df_min['net_value'].cumsum()
+
+            # Tính dòng tiền lũy kế
+            df_min['cumulative_net'] = df_min['cumulative_value_buy'] - df_min['cumulative_value_sell']
+
+            # Lấy các dòng tiền lũy kế cuối cùng
+            cumulative_buy = df_min['cumulative_value_buy'].iloc[-1] if not df_min.empty else 0
+            cumulative_sell = df_min['cumulative_value_sell'].iloc[-1] if not df_min.empty else 0
+            cumulative_net = df_min['cumulative_net'].iloc[-1] if not df_min.empty else 0
+
+            return {
+                "symbol": symbol,
+                "cumulative_value_buy": cumulative_buy,
+                "cumulative_value_sell": cumulative_sell,
+                "cumulative_value_net": cumulative_net
+            }
         except Exception:
             return None
 
@@ -151,25 +122,25 @@ with tab2:
             df_sector = pd.DataFrame(results)
             # Tạo bản hiển thị đã định dạng số kiểu 1.000.000
             df_display = df_sector.copy()
-            for col in ['in', 'out', 'net']:
+            for col in ['cumulative_value_buy', 'cumulative_value_sell', 'cumulative_value_net']:
                 df_display[col] = df_display[col].map(lambda x: f"{x:,.0f}".replace(",", "."))
 
             # Hiển thị bảng định dạng
-            st.subheader("📋 Bảng Dòng Tiền (VND)")
+            st.subheader("📋 Bảng Dòng Tiền Mua/Bán/Ròng Lũy Kế (VND)")
             st.dataframe(df_display, use_container_width=True)
 
-            import altair as alt
-
-            st.subheader(f'📊 Biểu Đồ Dòng Tiền Nhóm: {selected_sector}')
+            import altair as alt         
+            
+            st.subheader(f'📊 Biểu Đồ Dòng Tiền lũy kế Nhóm: {selected_sector}')
 
             # Dữ liệu dạng long cho biểu đồ cột
-            df_melted = df_sector.melt(id_vars="symbol", value_vars=["in", "out"], var_name="type", value_name="value")
+            df_melted = df_sector.melt(id_vars="symbol", value_vars=["cumulative_value_buy", "cumulative_value_sell"], var_name="type", value_name="value")
 
             bars = alt.Chart(df_melted).mark_bar().encode(
                 x=alt.X('symbol:N', title='Mã cổ phiếu'),
                 xOffset='type:N',
                 y=alt.Y('value:Q', title='VND'),
-                color=alt.Color('type:N', scale=alt.Scale(domain=['in', 'out'], range=['#2E86AB', '#E74C3C'])),
+                color=alt.Color('type:N', scale=alt.Scale(domain=['cumulative_value_buy', 'cumulative_value_sell'], range=['#2E86AB', '#E74C3C'])),
                 tooltip=['symbol', 'type', alt.Tooltip('value:Q', format=',')]
             ).properties(
                 width=700,
@@ -178,8 +149,8 @@ with tab2:
 
             line = alt.Chart(df_sector).mark_line(color='purple', strokeWidth=3).encode(
                 x=alt.X('symbol:N', title='Mã cổ phiếu'),
-                y=alt.Y('net:Q', title='VND'),
-                tooltip=['symbol', alt.Tooltip('net:Q', format=',')]
+                y=alt.Y('cumulative_value_net:Q', title='VND'),
+                tooltip=['symbol', alt.Tooltip('cumulative_value_net:Q', format=',')]
             )
 
             chart = (bars + line).properties(
@@ -193,64 +164,128 @@ with tab2:
         else:
             st.warning("Không thể phân tích dòng tiền nhóm ngành này.")
 
+
+
 # ==== TAB 3 ====
 with tab3:
-    st.title('📝 Phân Tích Dòng Tiền Theo Danh Sách Tùy Chọn')
+    st.title('📊 Phân Tích Dòng Tiền Theo Các Mã Cổ Phiếu')
 
-    st.markdown("Nhập tối đa **10 mã cổ phiếu**, cách nhau bởi dấu phẩy (`,`)")
+    uploaded_file = st.file_uploader("Tải lên tệp CSV chứa mã cổ phiếu", type=["csv"])
 
-    custom_input = st.text_input("Nhập mã cổ phiếu:", placeholder="VD: VNM, SSI, FPT, HPG")
-    selected_date_custom = st.date_input('Chọn ngày giao dịch:', value=date.today(), key='date_custom')
-    analyze_custom_button = st.button('🔍 Phân Tích Danh Sách')
+    if uploaded_file is not None:
+        try:
+            # Đọc file CSV và hiển thị một số dòng đầu tiên
+            df_uploaded = pd.read_csv(uploaded_file)
+            st.write("Dữ liệu đã tải lên:", df_uploaded.head())
 
-    if analyze_custom_button:
-        symbols = [s.strip().upper() for s in custom_input.split(",") if s.strip()]
-        symbols = list(dict.fromkeys(symbols))
-        if len(symbols) == 0:
-            st.warning("Vui lòng nhập ít nhất 1 mã cổ phiếu.")
-        elif len(symbols) > 10:
-            st.error("Chỉ phân tích tối đa 10 mã cổ phiếu.")
-        else:
-            st.info(f"Đang phân tích {len(symbols)} mã...")
-
-            with st.spinner("Đang xử lý..."):
-                with ThreadPoolExecutor(max_workers=6) as executor:
-                    futures = [executor.submit(process_symbol, sym, selected_date_custom) for sym in symbols]
-                    results = [f.result() for f in futures if f.result() is not None]
-
-            if results:
-                df_custom = pd.DataFrame(results)
-                df_display = df_custom.copy()
-                for col in ['in', 'out', 'net']:
-                    df_display[col] = df_display[col].map(lambda x: f"{x:,.0f}".replace(",", "."))
-
-                st.subheader("📋 Bảng Dòng Tiền (VND)")
-                st.dataframe(df_display, use_container_width=True)
-
-                import altair as alt
-
-                st.subheader('📊 Biểu Đồ Dòng Tiền')
-
-                df_melted = df_custom.melt(id_vars="symbol", value_vars=["in", "out"], var_name="type", value_name="value")
-
-                bars = alt.Chart(df_melted).mark_bar().encode(
-                    x=alt.X('symbol:N', title='Mã cổ phiếu'),
-                    xOffset='type:N',
-                    y=alt.Y('value:Q', title='VND'),
-                    color=alt.Color('type:N', scale=alt.Scale(domain=['in', 'out'], range=['#2E86AB', '#E74C3C'])),
-                    tooltip=['symbol', 'type', alt.Tooltip('value:Q', format=',')]
-                ).properties(width=700, height=400)
-
-                line = alt.Chart(df_custom).mark_line(color='purple', strokeWidth=3).encode(
-                    x=alt.X('symbol:N'),
-                    y=alt.Y('net:Q'),
-                    tooltip=['symbol', alt.Tooltip('net:Q', format=',')]
-                )
-
-                chart = (bars + line).resolve_scale(y='shared').properties(width=700, height=400)
-                st.altair_chart(chart, use_container_width=True)
+            # Kiểm tra cột chứa mã cổ phiếu
+            if 'symbol' not in df_uploaded.columns:
+                st.warning("Tệp CSV phải chứa cột 'symbol' để xác định mã cổ phiếu.")
             else:
-                st.warning("Không thể phân tích các mã đã nhập.")
+                symbols = df_uploaded['symbol'].tolist()
+
+                selected_date = st.date_input('Chọn ngày giao dịch:', value=date.today(), key='date_symbols')
+                analyze_button = st.button('🔍 Phân Tích Dòng Tiền Các Mã Cổ Phiếu', key='analyze_symbols')
+
+                def process_symbol(symbol, selected_date):
+                    try:
+                        # Khởi tạo đối tượng lấy dữ liệu intraday
+                        stock = Vnstock().stock(symbol=symbol, source='VCI')
+                        df_intraday = stock.quote.intraday(symbol=symbol, page_size=10000)
+
+                        if df_intraday is None or df_intraday.empty:
+                            st.warning(f"Không có dữ liệu intraday cho mã {symbol}.")
+                            return None
+
+                        # Chuyển đổi dữ liệu về dạng thời gian
+                        df_intraday['time'] = pd.to_datetime(df_intraday['time'])
+                        df_intraday.set_index('time', inplace=True)
+
+                        # Gộp theo từng phút
+                        df_intraday['minute'] = df_intraday.index.floor('T')  # 'T' là viết tắt cho 'minutely'
+
+                        # Tính volume mua & bán
+                        df_intraday['volume_buy'] = df_intraday.apply(lambda x: x['volume'] if x['match_type'] == 'Buy' else 0, axis=1)
+                        df_intraday['volume_sell'] = df_intraday.apply(lambda x: x['volume'] if x['match_type'] == 'Sell' else 0, axis=1)
+
+                        # Nhóm theo từng phút
+                        df_min = df_intraday.groupby('minute').agg(
+                            volume_buy=('volume_buy', 'sum'),
+                            volume_sell=('volume_sell', 'sum'),
+                            avg_price=('price', 'mean')
+                        ).reset_index()
+
+                        # Tính dòng tiền (Value = Giá * Volume)
+                        df_min['value_buy'] = df_min['volume_buy'] * df_min['avg_price'] * 1000
+                        df_min['value_sell'] = df_min['volume_sell'] * df_min['avg_price'] * 1000
+                        df_min['net'] = df_min['volume_buy'] - df_min['volume_sell']
+                        df_min['net_value'] = df_min['value_buy'] - df_min['value_sell']
+
+                        # Tính khối lượng mua/bán lũy kế
+                        df_min['cumulative_value_buy'] = df_min['value_buy'].cumsum()
+                        df_min['cumulative_value_sell'] = df_min['value_sell'].cumsum()
+                        df_min['cumulative_value_net'] = df_min['net_value'].cumsum()
+
+                        # Tính dòng tiền lũy kế
+                        df_min['cumulative_net'] = df_min['cumulative_value_buy'] - df_min['cumulative_value_sell']
+
+                        # Lấy các dòng tiền lũy kế cuối cùng
+                        cumulative_buy = df_min['cumulative_value_buy'].iloc[-1] if not df_min.empty else 0
+                        cumulative_sell = df_min['cumulative_value_sell'].iloc[-1] if not df_min.empty else 0
+                        cumulative_net = df_min['cumulative_net'].iloc[-1] if not df_min.empty else 0
+
+                        return {
+                            "symbol": symbol,
+                            "cumulative_value_buy": cumulative_buy,
+                            "cumulative_value_sell": cumulative_sell,
+                            "cumulative_value_net": cumulative_net
+                        }
+                    except Exception:
+                        return None
+
+                if analyze_button and symbols:
+                    st.info(f"Đang phân tích {len(symbols)} mã cổ phiếu...")
+
+                    with st.spinner("Đang xử lý..."):
+                        with ThreadPoolExecutor(max_workers=6) as executor:
+                            futures = [executor.submit(process_symbol, sym, selected_date) for sym in symbols]
+                            results = [f.result() for f in futures if f.result() is not None]
+
+                    if results:
+                        df_symbols = pd.DataFrame(results)
+                        # Tạo bản hiển thị đã định dạng số kiểu 1.000.000
+                        df_display = df_symbols.copy()
+                        for col in ['cumulative_value_buy', 'cumulative_value_sell', 'cumulative_value_net']:
+                            df_display[col] = df_display[col].map(lambda x: f"{x:,.0f}".replace(",", "."))
+
+                        # Hiển thị bảng định dạng
+                        st.subheader("📋 Bảng Dòng Tiền Mua/Bán/Ròng Lũy Kế (VND)")
+                        st.dataframe(df_display, use_container_width=True)
+
+                        # Chia màn hình thành 2 cột
+                        col1, col2 = st.columns(2)
+
+                        with col1:
+                            # Top 10 cổ phiếu có dòng tiền ròng lớn nhất
+                            top_10_net_positive = df_symbols.nlargest(10, 'cumulative_value_net')
+                            st.subheader("🔝 Top 10 Cổ Phiếu Có Dòng Tiền Ròng Lớn Nhất")
+                            top_10_net_positive_display = top_10_net_positive[['symbol', 'cumulative_value_net']]
+                            top_10_net_positive_display['cumulative_value_net'] = top_10_net_positive_display['cumulative_value_net'].map(lambda x: f"{x:,.0f}".replace(",", "."))
+                            st.dataframe(top_10_net_positive_display, use_container_width=True)
+
+                        with col2:
+                            # Top 10 cổ phiếu có dòng tiền ròng thấp nhất
+                            top_10_net_negative = df_symbols.nsmallest(10, 'cumulative_value_net')
+                            st.subheader("🔻 Top 10 Cổ Phiếu Có Dòng Tiền Ròng Thấp Nhất")
+                            top_10_net_negative_display = top_10_net_negative[['symbol', 'cumulative_value_net']]
+                            top_10_net_negative_display['cumulative_value_net'] = top_10_net_negative_display['cumulative_value_net'].map(lambda x: f"{x:,.0f}".replace(",", "."))
+                            st.dataframe(top_10_net_negative_display, use_container_width=True)
+
+                    else:
+                        st.warning("Không thể phân tích dòng tiền các mã cổ phiếu này.")
+        except Exception as e:
+            st.warning(f"Đã xảy ra lỗi khi tải lên tệp CSV: {e}")
+
                 
 # ==== TAB 4 ====
 
@@ -509,6 +544,7 @@ with tab6:
                 # Tính toán net (volume_buy - volume_sell)
                 df_grouped['net'] = df_grouped['volume_buy'] - df_grouped['volume_sell']
                 
+                
                 # Tính tổng các giá trị
                 total_volume_buy = df_grouped['volume_buy'].sum()
                 total_volume_sell = df_grouped['volume_sell'].sum()
@@ -541,5 +577,220 @@ with tab6:
         except Exception as e:
             st.error(f"Đã xảy ra lỗi khi lấy dữ liệu realtime: {e}")
 
-
             
+# ==== TAB 7 ====
+with tab7:
+    st.title("📊 Phân Tích Cổ Phiếu (Dữ liệu Intraday)")
+
+    st.markdown("Nhập mã cổ phiếu và số bản ghi để phân tích dữ liệu cổ phiếu theo từng phút.")
+
+    symbol = st.text_input("Nhập mã cổ phiếu:", value="VNM", key="symbol_tab7").strip().upper()
+    page_size = st.number_input("Chọn số lượng bản ghi (giao dịch):", min_value=1, max_value=50000, value=10000)
+
+    if st.button("📈 Phân tích cổ phiếu", key="btn_tab7"):
+        try:
+            # Khởi tạo đối tượng lấy dữ liệu
+            stock = Vnstock().stock(symbol=symbol, source='VCI')
+            df_intraday = stock.quote.intraday(symbol=symbol, page_size=page_size)
+
+            if df_intraday is None or df_intraday.empty:
+                st.warning(f"Không có dữ liệu intraday cho mã {symbol}.")
+            else:
+                df_intraday['time'] = pd.to_datetime(df_intraday['time'])
+                df_intraday.set_index('time', inplace=True)
+
+                # Gộp theo từng phút
+                df_intraday['minute'] = df_intraday.index.floor('T')  # 'T' là viết tắt cho 'minutely'
+
+                # Tính volume mua & bán
+                df_intraday['volume_buy'] = df_intraday.apply(lambda x: x['volume'] if x['match_type'] == 'Buy' else 0, axis=1)
+                df_intraday['volume_sell'] = df_intraday.apply(lambda x: x['volume'] if x['match_type'] == 'Sell' else 0, axis=1)
+
+                # Nhóm theo từng phút
+                df_min = df_intraday.groupby('minute').agg(
+                    volume_buy=('volume_buy', 'sum'),
+                    volume_sell=('volume_sell', 'sum'),
+                    avg_price=('price', 'mean')
+                ).reset_index()
+
+                # Tính dòng tiền (Value = Giá * Volume)
+                df_min['value_buy'] = df_min['volume_buy'] * df_min['avg_price'] * 1000
+                df_min['value_sell'] = df_min['volume_sell'] * df_min['avg_price'] * 1000
+                df_min['net'] = df_min['volume_buy'] - df_min['volume_sell']
+                df_min['net_value'] = df_min['value_buy'] - df_min['value_sell'] 
+                
+                # Tính khối lượng mua/bán lũy kế
+                df_min['cumulative_volume_buy'] = df_min['volume_buy'].cumsum()
+                df_min['cumulative_volume_sell'] = df_min['volume_sell'].cumsum()
+                df_min['cumulative_volume_net'] = df_min['cumulative_volume_buy'] - df_min['cumulative_volume_sell']
+
+                # Tính dòng tiền lũy kế
+                df_min['cumulative_volume_net'] = df_min['net'].cumsum()
+                df_min['cumulative_net'] = df_min['net_value'].cumsum()
+                
+                
+                # Hiển thị bảng
+                st.markdown(f"### Dữ liệu cổ phiếu theo phút cho mã: **{symbol}**")
+                st.dataframe(df_min.style.format({'avg_price': '{:,.2f}', 'volume_buy': '{:,.0f}', 'volume_sell': '{:,.0f}', 'net': '{:,.0f}', 'value_buy': '{:,.2f}',
+                'value_sell': '{:,.2f}', 'net_value': '{:,.2f}', 'cumulative_volume_buy': '{:,.2f}','cumulative_volume_sell': '{:,.2f}','cumulative_volume_net': '{:,.2f}', 'cumulative_net': '{:,.2f}'}), use_container_width=True)
+
+                #1 Biểu đồ dòng tiền theo Volume
+                st.markdown("### 📊 Biểu đồ dòng tiền theo phút")
+
+                fig = go.Figure()
+
+                # Volume mua - màu xanh (dương)
+                fig.add_trace(go.Bar(
+                    x=df_min['minute'],
+                    y=df_min['volume_buy'],
+                    name='Volume Mua',
+                    marker=dict(color='#2ECC71', line=dict(width=0))
+                ))
+
+                # Volume bán - màu đỏ (âm)
+                fig.add_trace(go.Bar(
+                    x=df_min['minute'],
+                    y=-df_min['volume_sell'],  # âm để hiển thị bên dưới trục
+                    name='Volume Bán',
+                    marker=dict(color='#E74C3C', line=dict(width=0))
+                ))
+
+                # Net Volume - chỉ là line không có markers
+                fig.add_trace(go.Scatter(
+                    x=df_min['minute'],
+                    y=df_min['volume_buy'] - df_min['volume_sell'],  # Net Volume
+                    mode='lines',
+                    name='Net Volume',
+                    line=dict(color='#9B59B6', width=2),
+                    yaxis='y2'
+                ))
+
+                # Cập nhật layout
+                fig.update_layout(
+                    barmode='relative',
+                    title=f"📊 Dòng tiền theo phút - {symbol}",
+                    xaxis_title="Thời gian",
+                    yaxis=dict(
+                        title="Volume (Cổ phiếu)",
+                        side="left"
+                    ),
+                    yaxis2=dict(
+                        title="Net Volume",
+                        overlaying='y',
+                        side='right',
+                        showgrid=False
+                    ),
+                    template='plotly_dark',
+                    hovermode='x unified',
+                    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+                )
+
+                st.plotly_chart(fig, use_container_width=True)
+                
+                
+                #2 Biểu đồ dòng tiền theo giá trị
+                fig2 = go.Figure()
+
+                # Giá trị mua - cột màu xanh
+                fig2.add_trace(go.Bar(
+                    x=df_min['minute'],
+                    y=df_min['value_buy'],
+                    name='Giá trị Mua (VND)',
+                    marker=dict(color='#2ECC71', line=dict(width=0)),
+                    yaxis='y'
+                ))
+
+                # Giá trị bán - cột màu đỏ
+                fig2.add_trace(go.Bar(
+                    x=df_min['minute'],
+                    y=-df_min['value_sell'],  # Hiển thị giá trị bán dưới trục
+                    name='Giá trị Bán (VND)',
+                    marker=dict(color='#E74C3C', line=dict(width=0)),
+                    yaxis='y'
+                ))
+
+                # Net Value - đường màu tím
+                fig2.add_trace(go.Scatter(
+                    x=df_min['minute'],
+                    y=df_min['value_buy'] - df_min['value_sell'],
+                    mode='lines',
+                    name='Net Value (VND)',
+                    line=dict(color='#9B59B6', width=2),
+                    yaxis='y'
+                ))
+
+                # Cập nhật layout
+                fig2.update_layout(
+                    title="💰 Dòng tiền theo giá trị (VND) theo phút",
+                    xaxis_title="Thời gian",
+                    yaxis_title="Giá trị (VND)",
+                    template='plotly_dark',
+                    barmode='relative',  # Cho phép cột âm và dương chồng lên nhau
+                    hovermode='x unified',
+                    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+                )
+
+                st.plotly_chart(fig2, use_container_width=True)
+                
+                              
+
+                # Biểu đồ Khối lượng lũy kế
+                fig5 = go.Figure()
+
+                # Khối lượng mua lũy kế - cột dương
+                fig5.add_trace(go.Bar(
+                    x=df_min['minute'],
+                    y=df_min['cumulative_volume_buy'],
+                    name='Khối lượng Mua lũy kế',
+                    marker=dict(color='#2ECC71', line=dict(width=0)),
+                    yaxis='y'
+                ))
+
+                # Khối lượng bán lũy kế - cột âm
+                fig5.add_trace(go.Bar(
+                    x=df_min['minute'],
+                    y=-df_min['cumulative_volume_sell'],
+                    name='Khối lượng Bán lũy kế',
+                    marker=dict(color='#E74C3C', line=dict(width=0)),
+                    yaxis='y'
+                ))
+
+                # Khối lượng ròng lũy kế - line màu xanh dương đậm
+                fig5.add_trace(go.Scatter(
+                    x=df_min['minute'],
+                    y=df_min['cumulative_volume_net'],
+                    mode='lines',
+                    name='Khối lượng ròng lũy kế',
+                    line=dict(color='#9B59B6', width=2),
+                    yaxis='y'
+                ))
+
+                fig5.update_layout(
+                    title="📈 Khối lượng ròng lũy kế theo phút",
+                    xaxis_title="Thời gian",
+                    yaxis_title="Khối lượng (Cổ phiếu)",
+                    template='plotly_dark',
+                    barmode='relative',
+                    hovermode='x unified',
+                    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
+                )
+
+                st.plotly_chart(fig5, use_container_width=True)
+                
+                #4 Biểu đồ dòng tiền lũy kế
+                fig6 = px.line(
+                    df_min, x='minute', y='cumulative_net',
+                    title="📈 Giá trị Dòng tiền ròng lũy kế theo phút",
+                    labels={'cumulative_net': 'Dòng tiền ròng lũy kế (VND)', 'minute': 'Thời gian'}
+                )
+                fig6.update_traces(line=dict(color='#2980B9', width=2))
+                st.plotly_chart(fig6, use_container_width=True)
+
+                                
+                
+
+        except Exception as e:
+            st.error(f"Đã xảy ra lỗi: {str(e)}")
+
+
+           
