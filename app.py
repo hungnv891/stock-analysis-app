@@ -168,123 +168,166 @@ with tab2:
 
 # ==== TAB 3 ====
 with tab3:
-    st.title('📊 Phân Tích Dòng Tiền Theo Các Mã Cổ Phiếu')
-
-    uploaded_file = st.file_uploader("Tải lên tệp CSV chứa mã cổ phiếu", type=["csv"])
-
-    if uploaded_file is not None:
+    # Define the function for processing stock data
+    def process_symbol(symbol, selected_date):
         try:
-            # Đọc file CSV và hiển thị một số dòng đầu tiên
-            df_uploaded = pd.read_csv(uploaded_file)
-            st.write("Dữ liệu đã tải lên:", df_uploaded.head())
+            # Khởi tạo đối tượng lấy dữ liệu intraday
+            stock = Vnstock().stock(symbol=symbol, source='VCI')
+            df_intraday = stock.quote.intraday(symbol=symbol, page_size=10000)
 
-            # Kiểm tra cột chứa mã cổ phiếu
-            if 'symbol' not in df_uploaded.columns:
-                st.warning("Tệp CSV phải chứa cột 'symbol' để xác định mã cổ phiếu.")
+            if df_intraday is None or df_intraday.empty:
+                st.warning(f"Không có dữ liệu intraday cho mã {symbol}.")
+                return None
+
+            # Chuyển đổi dữ liệu về dạng thời gian
+            df_intraday['time'] = pd.to_datetime(df_intraday['time'])
+            df_intraday.set_index('time', inplace=True)
+
+            # Gộp theo từng phút
+            df_intraday['minute'] = df_intraday.index.floor('T')
+
+            # Tính volume mua & bán
+            df_intraday['volume_buy'] = df_intraday.apply(lambda x: x['volume'] if x['match_type'] == 'Buy' else 0, axis=1)
+            df_intraday['volume_sell'] = df_intraday.apply(lambda x: x['volume'] if x['match_type'] == 'Sell' else 0, axis=1)
+
+            # Nhóm theo từng phút
+            df_min = df_intraday.groupby('minute').agg(
+                volume_buy=('volume_buy', 'sum'),
+                volume_sell=('volume_sell', 'sum'),
+                avg_price=('price', 'mean')
+            ).reset_index()
+
+            # Tính dòng tiền (Value = Giá * Volume)
+            df_min['value_buy'] = df_min['volume_buy'] * df_min['avg_price'] * 1000
+            df_min['value_sell'] = df_min['volume_sell'] * df_min['avg_price'] * 1000
+            df_min['net'] = df_min['volume_buy'] - df_min['volume_sell']
+            df_min['net_value'] = df_min['value_buy'] - df_min['value_sell']
+
+            # Tính khối lượng mua/bán lũy kế
+            df_min['cumulative_value_buy'] = df_min['value_buy'].cumsum()
+            df_min['cumulative_value_sell'] = df_min['value_sell'].cumsum()
+            df_min['cumulative_value_net'] = df_min['net_value'].cumsum()
+
+            # Tính dòng tiền lũy kế
+            df_min['cumulative_net'] = df_min['cumulative_value_buy'] - df_min['cumulative_value_sell']
+
+            # Lấy các dòng tiền lũy kế cuối cùng
+            cumulative_buy = df_min['cumulative_value_buy'].iloc[-1] if not df_min.empty else 0
+            cumulative_sell = df_min['cumulative_value_sell'].iloc[-1] if not df_min.empty else 0
+            cumulative_net = df_min['cumulative_net'].iloc[-1] if not df_min.empty else 0
+
+            return {
+                "symbol": symbol,
+                "cumulative_value_buy": cumulative_buy,
+                "cumulative_value_sell": cumulative_sell,
+                "cumulative_value_net": cumulative_net
+            }
+        except Exception:
+            return None
+
+    # Main Streamlit code
+    st.title('📊 Phân Tích Dòng Tiền Cổ Phiếu')
+
+    # Option 1: Upload CSV file with stock symbols
+    uploaded_file = st.file_uploader("Tải lên file CSV chứa mã cổ phiếu", type="csv")
+
+    # Option 2: Manual input of stock symbols
+    manual_input = st.text_input("Nhập mã cổ phiếu (cách nhau bằng dấu phẩy):", "")
+
+    # Option 3: Select sector (optional)
+    sector_map = {
+        'Ngân hàng': ['VCB', 'CTG', 'BID', 'TCB', 'MBB', 'ACB', 'HDB', 'LPB', 'SHB', 'STB'],
+        'Chứng khoán': ['SSI', 'VND', 'HCM', 'VCI', 'FTS', 'CTS', 'MBS', 'SHS', 'BSI', 'VIX'],
+        'Ngân hàng': ['VCB', 'CTG', 'BID', 'TCB', 'MBB', 'ACB', 'HDB', 'LPB', 'SHB', 'STB'],
+        'Chứng khoán': ['SSI', 'VND', 'HCM', 'VCI', 'FTS', 'CTS', 'MBS', 'SHS', 'BSI', 'VIX'],
+        'Thép': ['HPG', 'HSG', 'NKG', 'TLH'],
+        'Bất động sản': ['VIC', 'VHM', 'NLG', 'KDH', 'DXG', 'HDG', 'LDG', 'HDC', 'NVL', 'LHG'],
+        'Công nghệ': ['FPT', 'CMG', 'CTR', 'VGI'],
+        'Bán lẻ': ['MSN', 'MWG', 'DGW', 'PNJ', 'FRT'],
+        'Điện nước': ['BWE', 'NT2', 'POW', 'PC1', 'DQC'],
+        'Dầu khí': ['PVS', 'PVD', 'GAS', 'PLX', 'BSR'],
+        'Xây dựng': ['CTD', 'HBC', 'CII', 'VCG', 'FCN'],
+        'Đầu tư công': ['HHV', 'LCG', 'HTI', 'DPG', 'EVG'],
+        'Thực phẩm': ['DBC', 'QNS', 'NAF', 'SBT', 'MCH', 'VNM', 'SAB'],
+        'Bảo hiểm': ['BVH', 'BMI', 'MIG', 'BIC', 'PVI'],
+        'Thủy sản': ['VHC', 'ANV', 'FMC', 'ASM'],
+        'Dệt may': ['MSH', 'TCM', 'TNG', 'VGT', 'STK'],
+        'Cao su': ['GVR', 'DPR', 'HRC', 'PHR'],
+        'Dược phẩm': ['DCL', 'DHG', 'IMP', 'TRA', 'DVN'],
+        'Vận tải': ['PVT', 'HAH', 'GMD', 'VNS', 'VSC'],
+        'Nhựa': ['AAA', 'BMP', 'NTP', 'DNP'],
+        'Khu CN': ['KBC', 'SZC', 'TIP', 'BCM', 'VGC', 'IDC'],
+        'Phân bón': ['DGC', 'DPM', 'DCM', 'BFC', 'LAS']
+        # Add other sectors as required...
+    }
+
+    selected_sector = st.selectbox('Chọn nhóm ngành:', options=list(sector_map.keys()), index=0, key="sector_select")
+
+    # Select a date for analysis
+    selected_date = st.date_input('Chọn ngày giao dịch:', value=date.today(), key='date')
+
+    # Define button to trigger analysis
+    analyze_button = st.button('🔍 Phân Tích Dòng Tiền')
+
+    # Process the symbols based on the input
+    if analyze_button:
+        st.info(f"Đang phân tích các mã cổ phiếu...")
+
+        if uploaded_file is not None:
+            # Read CSV file and extract stock symbols
+            df_csv = pd.read_csv(uploaded_file)
+            symbols = df_csv['symbol'].dropna().tolist()  # Assuming the CSV has a column 'symbol'
+        elif manual_input:
+            # Process manual input
+            symbols = [sym.strip() for sym in manual_input.split(',')]
+        elif selected_sector:
+            # Default to selected sector symbols if no CSV or manual input
+            symbols = sector_map.get(selected_sector, [])
+        else:
+            st.warning("Vui lòng nhập mã cổ phiếu hoặc chọn nhóm ngành.")
+            symbols = []
+
+        if symbols:
+            with st.spinner("Đang xử lý..."):
+                with ThreadPoolExecutor(max_workers=6) as executor:
+                    futures = [executor.submit(process_symbol, sym, selected_date) for sym in symbols]
+                    results = [f.result() for f in futures if f.result() is not None]
+
+            if results:
+                df_symbols = pd.DataFrame(results)
+
+                # Format the numbers to display as "1.000.000" instead of "1000000"
+                df_display = df_symbols.copy()
+                for col in ['cumulative_value_buy', 'cumulative_value_sell', 'cumulative_value_net']:
+                    df_display[col] = df_display[col].map(lambda x: f"{x:,.0f}".replace(",", "."))
+
+                # Display the formatted table
+                st.subheader("📋 Bảng Dòng Tiền Mua/Bán/Ròng Lũy Kế (VND)")
+                st.dataframe(df_display, use_container_width=True)
+
+                # Split the screen into two columns
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    # Top 10 stocks with the highest net cash flow
+                    top_10_net_positive = df_symbols.nlargest(10, 'cumulative_value_net')
+                    st.subheader("🔝 Top 10 Cổ Phiếu Có Dòng Tiền Ròng Lớn Nhất")
+                    top_10_net_positive_display = top_10_net_positive[['symbol', 'cumulative_value_net']]
+                    top_10_net_positive_display['cumulative_value_net'] = top_10_net_positive_display['cumulative_value_net'].map(lambda x: f"{x:,.0f}".replace(",", "."))
+                    st.dataframe(top_10_net_positive_display, use_container_width=True)
+
+                with col2:
+                    # Top 10 stocks with the lowest net cash flow
+                    top_10_net_negative = df_symbols.nsmallest(10, 'cumulative_value_net')
+                    st.subheader("🔻 Top 10 Cổ Phiếu Có Dòng Tiền Ròng Thấp Nhất")
+                    top_10_net_negative_display = top_10_net_negative[['symbol', 'cumulative_value_net']]
+                    top_10_net_negative_display['cumulative_value_net'] = top_10_net_negative_display['cumulative_value_net'].map(lambda x: f"{x:,.0f}".replace(",", "."))
+                    st.dataframe(top_10_net_negative_display, use_container_width=True)
+
             else:
-                symbols = df_uploaded['symbol'].tolist()
-
-                selected_date = st.date_input('Chọn ngày giao dịch:', value=date.today(), key='date_symbols')
-                analyze_button = st.button('🔍 Phân Tích Dòng Tiền Các Mã Cổ Phiếu', key='analyze_symbols')
-
-                def process_symbol(symbol, selected_date):
-                    try:
-                        # Khởi tạo đối tượng lấy dữ liệu intraday
-                        stock = Vnstock().stock(symbol=symbol, source='VCI')
-                        df_intraday = stock.quote.intraday(symbol=symbol, page_size=10000)
-
-                        if df_intraday is None or df_intraday.empty:
-                            st.warning(f"Không có dữ liệu intraday cho mã {symbol}.")
-                            return None
-
-                        # Chuyển đổi dữ liệu về dạng thời gian
-                        df_intraday['time'] = pd.to_datetime(df_intraday['time'])
-                        df_intraday.set_index('time', inplace=True)
-
-                        # Gộp theo từng phút
-                        df_intraday['minute'] = df_intraday.index.floor('T')  # 'T' là viết tắt cho 'minutely'
-
-                        # Tính volume mua & bán
-                        df_intraday['volume_buy'] = df_intraday.apply(lambda x: x['volume'] if x['match_type'] == 'Buy' else 0, axis=1)
-                        df_intraday['volume_sell'] = df_intraday.apply(lambda x: x['volume'] if x['match_type'] == 'Sell' else 0, axis=1)
-
-                        # Nhóm theo từng phút
-                        df_min = df_intraday.groupby('minute').agg(
-                            volume_buy=('volume_buy', 'sum'),
-                            volume_sell=('volume_sell', 'sum'),
-                            avg_price=('price', 'mean')
-                        ).reset_index()
-
-                        # Tính dòng tiền (Value = Giá * Volume)
-                        df_min['value_buy'] = df_min['volume_buy'] * df_min['avg_price'] * 1000
-                        df_min['value_sell'] = df_min['volume_sell'] * df_min['avg_price'] * 1000
-                        df_min['net'] = df_min['volume_buy'] - df_min['volume_sell']
-                        df_min['net_value'] = df_min['value_buy'] - df_min['value_sell']
-
-                        # Tính khối lượng mua/bán lũy kế
-                        df_min['cumulative_value_buy'] = df_min['value_buy'].cumsum()
-                        df_min['cumulative_value_sell'] = df_min['value_sell'].cumsum()
-                        df_min['cumulative_value_net'] = df_min['net_value'].cumsum()
-
-                        # Tính dòng tiền lũy kế
-                        df_min['cumulative_net'] = df_min['cumulative_value_buy'] - df_min['cumulative_value_sell']
-
-                        # Lấy các dòng tiền lũy kế cuối cùng
-                        cumulative_buy = df_min['cumulative_value_buy'].iloc[-1] if not df_min.empty else 0
-                        cumulative_sell = df_min['cumulative_value_sell'].iloc[-1] if not df_min.empty else 0
-                        cumulative_net = df_min['cumulative_net'].iloc[-1] if not df_min.empty else 0
-
-                        return {
-                            "symbol": symbol,
-                            "cumulative_value_buy": cumulative_buy,
-                            "cumulative_value_sell": cumulative_sell,
-                            "cumulative_value_net": cumulative_net
-                        }
-                    except Exception:
-                        return None
-
-                if analyze_button and symbols:
-                    st.info(f"Đang phân tích {len(symbols)} mã cổ phiếu...")
-
-                    with st.spinner("Đang xử lý..."):
-                        with ThreadPoolExecutor(max_workers=6) as executor:
-                            futures = [executor.submit(process_symbol, sym, selected_date) for sym in symbols]
-                            results = [f.result() for f in futures if f.result() is not None]
-
-                    if results:
-                        df_symbols = pd.DataFrame(results)
-                        # Tạo bản hiển thị đã định dạng số kiểu 1.000.000
-                        df_display = df_symbols.copy()
-                        for col in ['cumulative_value_buy', 'cumulative_value_sell', 'cumulative_value_net']:
-                            df_display[col] = df_display[col].map(lambda x: f"{x:,.0f}".replace(",", "."))
-
-                        # Hiển thị bảng định dạng
-                        st.subheader("📋 Bảng Dòng Tiền Mua/Bán/Ròng Lũy Kế (VND)")
-                        st.dataframe(df_display, use_container_width=True)
-
-                        # Chia màn hình thành 2 cột
-                        col1, col2 = st.columns(2)
-
-                        with col1:
-                            # Top 10 cổ phiếu có dòng tiền ròng lớn nhất
-                            top_10_net_positive = df_symbols.nlargest(10, 'cumulative_value_net')
-                            st.subheader("🔝 Top 10 Cổ Phiếu Có Dòng Tiền Ròng Lớn Nhất")
-                            top_10_net_positive_display = top_10_net_positive[['symbol', 'cumulative_value_net']]
-                            top_10_net_positive_display['cumulative_value_net'] = top_10_net_positive_display['cumulative_value_net'].map(lambda x: f"{x:,.0f}".replace(",", "."))
-                            st.dataframe(top_10_net_positive_display, use_container_width=True)
-
-                        with col2:
-                            # Top 10 cổ phiếu có dòng tiền ròng thấp nhất
-                            top_10_net_negative = df_symbols.nsmallest(10, 'cumulative_value_net')
-                            st.subheader("🔻 Top 10 Cổ Phiếu Có Dòng Tiền Ròng Thấp Nhất")
-                            top_10_net_negative_display = top_10_net_negative[['symbol', 'cumulative_value_net']]
-                            top_10_net_negative_display['cumulative_value_net'] = top_10_net_negative_display['cumulative_value_net'].map(lambda x: f"{x:,.0f}".replace(",", "."))
-                            st.dataframe(top_10_net_negative_display, use_container_width=True)
-
-                    else:
-                        st.warning("Không thể phân tích dòng tiền các mã cổ phiếu này.")
-        except Exception as e:
-            st.warning(f"Đã xảy ra lỗi khi tải lên tệp CSV: {e}")
+                st.warning("Không thể phân tích dòng tiền các mã cổ phiếu này.")
+        else:
+            st.warning("Không có mã cổ phiếu nào để phân tích.")
 
                 
 # ==== TAB 4 ====
