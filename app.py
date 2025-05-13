@@ -15,6 +15,7 @@ import streamlit as st
 import seaborn as sns
 import re
 from io import StringIO
+import plotly.figure_factory as ff
 
 
 st.set_page_config(page_title='Phân Tích Cổ Phiếu', layout='wide')
@@ -1252,7 +1253,7 @@ with tab6:
             template_data = {
                 'Ticker': [''],
                 'Date/Time': [''],
-                'close': [0.0],
+                'Close': [0.0],
                 'Change': [0.0],
                 'Volume': [0]
             }
@@ -1292,7 +1293,7 @@ with tab6:
             df['Date/Time'] = pd.to_datetime(df['Date/Time'], format='%m/%d/%Y')
 
             # Cải thiện định dạng cột "close" và "Change" (làm tròn đến 2 chữ số thập phân)
-            df['close'] = df['close'].round(2)
+            df['close'] = df['Close'].round(2)
             df['Change'] = df['Change'].round(2)
 
             # ==== Dropdown cho người dùng chọn Phân Tích Ngành hay Thị Trường ====
@@ -1424,8 +1425,86 @@ with tab6:
                 )
 
                 # Hiển thị biểu đồ scatter
-                st.plotly_chart(fig_scatter, use_container_width=True)
+                st.plotly_chart(fig_scatter, use_container_width=True)  
 
+
+                # ==== Biểu đồ 4: Biểu đồ phân tán dọc – % thay đổi theo từng mã, nhóm theo ngành ====
+                st.subheader("🎯 Biểu đồ phân tán – Thay đổi giá theo mã cổ phiếu, nhóm theo ngành")
+
+                # Lọc các dòng không có giá trị thay đổi
+                df_valid = df_filtered[df_filtered['Change'].notnull() & df_filtered['Industry'].notnull()]
+
+                # Tạo biểu đồ scatter dạng strip plot
+                fig_strip = px.scatter(
+                    df_valid,
+                    x="Ticker",          # Trục X là mã cổ phiếu
+                    y="Change",          # Trục Y là % thay đổi giá
+                    size="Volume",       # Kích thước điểm theo khối lượng
+                    color="Industry",    # Tô màu theo ngành
+                    hover_name="Ticker", # Hover hiển thị mã cổ phiếu
+                    hover_data={
+                        "Change": True,
+                        "Volume": True,
+                        "Industry": True
+                    },
+                    title="Mức thay đổi giá các cổ phiếu theo ngành (kích thước = khối lượng giao dịch)",
+                )
+
+                # Cập nhật hovertemplate để định dạng volume với dấu phân cách hàng nghìn
+                fig_strip.update_traces(
+                    hovertemplate="<b>%{hovertext}</b><br>%{x}: %{y:.2f}%<br>Volume: %{marker.size:,.0f}<extra></extra>"
+                )
+
+                # Tùy chỉnh giao diện biểu đồ
+                fig_strip.update_traces(marker=dict(opacity=0.7, line=dict(width=0.5, color='DarkSlateGrey')))
+                fig_strip.update_layout(
+                    template="plotly_white",
+                    xaxis_title="Mã cổ phiếu",
+                    yaxis_title="% Thay đổi giá",
+                    height=600
+                )
+
+                # Hiển thị biểu đồ
+                st.plotly_chart(fig_strip, use_container_width=True)                
+
+                # ==== Biểu đồ 6: Boxplot phân bố % thay đổi theo mã cổ phiếu ====
+                st.subheader("📦 Phân bố % thay đổi theo từng mã cổ phiếu")
+
+                # Loại bỏ giá trị NaN
+                df_box = df_filtered.dropna(subset=["Ticker", "Change"])
+
+                # Vẽ biểu đồ boxplot
+                fig_box = px.box(
+                    df_box,
+                    x="Ticker",
+                    y="Change",
+                    points="all",  # Hiển thị toàn bộ điểm
+                    color="Ticker",
+                    title="Phân bố % thay đổi theo từng mã cổ phiếu",
+                    labels={"Change": "% Thay đổi", "Ticker": "Mã cổ phiếu"}
+                )
+
+                # Định dạng hover với 2 chữ số thập phân
+                fig_box.update_traces(
+                    hovertemplate="<b>Mã cổ phiếu: %{x}</b><br>% Thay đổi: %{y:.2f}%<extra></extra>",
+                    marker=dict(opacity=0.5, size=6)
+                )
+
+                # Tùy chỉnh giao diện biểu đồ
+                fig_box.update_layout(
+                    template="plotly_white",
+                    height=700,
+                    xaxis_title="Mã cổ phiếu",
+                    yaxis_title="% Thay đổi",
+                    showlegend=False,
+                    font=dict(size=14),
+                    margin=dict(t=60, b=60, l=40, r=40)
+                )
+
+                # Hiển thị biểu đồ
+                st.plotly_chart(fig_box, use_container_width=True)
+
+                
             else:  # Nếu chọn phân tích Thị Trường
                 # ==== Phân tích Thị Trường ====
                 
@@ -1493,6 +1572,7 @@ with tab6:
                 # ==== Biểu đồ 2: Biểu đồ thay đổi giá trung bình theo ngành ====
                 st.subheader("📈 Biểu đồ thay đổi giá trung bình theo ngành")
 
+                # Tạo biểu đồ cột
                 fig_change = px.bar(
                     df_market,
                     x="Industry",
@@ -1501,6 +1581,13 @@ with tab6:
                     title="Thay đổi giá trung bình theo ngành",
                     labels={"Change": "% thay đổi giá"}
                 )
+
+                # Cập nhật hovertemplate để hiển thị 2 chữ số thập phân
+                fig_change.update_traces(
+                    hovertemplate="<b>%{x}</b><br>% thay đổi: %{y:.2f}%<extra></extra>"
+                )
+
+                # Hiển thị biểu đồ
                 st.plotly_chart(fig_change, use_container_width=True)
                 
                 # ==== Tạo biểu đồ tương quan về số mã tăng, giảm, không đổi giữa các ngành của thị trường ====
@@ -1530,7 +1617,166 @@ with tab6:
                 # Hiển thị biểu đồ Plotly trong Streamlit
                 st.plotly_chart(fig_industry_change, use_container_width=True)
                 
+                # ==== Biểu đồ 4: Biểu đồ phân tán dọc – % thay đổi theo từng mã, nhóm theo ngành ====
+                st.subheader("🎯 Biểu đồ phân tán – Thay đổi giá theo nhóm ngành")
 
+                # Lọc các dòng không có giá trị thay đổi
+                df_valid = df[df['Change'].notnull() & df['Industry'].notnull()]
+
+                # Tạo biểu đồ scatter dạng strip plot
+                fig_strip = px.scatter(
+                    df_valid,
+                    x="Industry",          # Trục X là nhóm ngành
+                    y="Change",            # Trục Y là % thay đổi giá
+                    size="Volume",         # Kích thước điểm theo khối lượng
+                    color="Industry",      # Tô màu theo ngành
+                    hover_name="Ticker",   # Hover hiển thị mã cổ phiếu
+                    hover_data={
+                        "Change": True,
+                        "Volume": True,
+                        "Industry": True
+                    },
+                    title="Mức thay đổi giá các cổ phiếu theo ngành (kích thước = khối lượng giao dịch)",
+                )
+                
+                # Cập nhật hovertemplate để định dạng volume với dấu phân cách hàng nghìn
+                fig_strip.update_traces(
+                    hovertemplate="<b>%{hovertext}</b><br>%{x}: %{y:.2f}%<br>Volume: %{marker.size:,.0f}<extra></extra>"
+                )
+
+                # Tùy chỉnh giao diện biểu đồ
+                fig_strip.update_traces(marker=dict(opacity=0.7, line=dict(width=0.5, color='DarkSlateGrey')))
+                fig_strip.update_layout(
+                    template="plotly_white",
+                    xaxis_title="Nhóm ngành",
+                    yaxis_title="% Thay đổi giá",
+                    height=600
+                )
+
+                # Hiển thị biểu đồ
+                st.plotly_chart(fig_strip, use_container_width=True)
+                
+                # ==== Biểu đồ 5: Độ lệch chuẩn của % thay đổi theo từng ngành (Line Chart) ====
+                st.subheader("📈 Độ lệch chuẩn % thay đổi theo từng ngành (Line Chart)")
+
+                # Tính toán độ lệch chuẩn cho từng ngành
+                industry_std = df.groupby("Industry")["Change"].std().reset_index()
+                industry_std.columns = ["Industry", "Std_Change"]
+                industry_std = industry_std.dropna().sort_values("Std_Change", ascending=False)
+
+                # Vẽ biểu đồ đường
+                fig_line = px.line(
+                    industry_std,
+                    x="Industry",
+                    y="Std_Change",
+                    markers=True,
+                    title="📈 Độ lệch chuẩn % thay đổi theo từng ngành",
+                    labels={"Industry": "Ngành", "Std_Change": "Độ lệch chuẩn (%)"},
+                    color_discrete_sequence=["#2ECC71"]  # Màu xanh ngọc
+                )
+
+                # Hiển thị giá trị hover dạng 2 số thập phân
+                fig_line.update_traces(
+                    line=dict(width=3),
+                    marker=dict(size=8, color="#27AE60", line=dict(width=1, color="#1E8449")),
+                    hovertemplate="<b>%{x}</b><br>Độ lệch chuẩn: %{y:.2f}%<extra></extra>"
+                )
+
+                # Tùy chỉnh giao diện
+                fig_line.update_layout(
+                    template="plotly_white",
+                    xaxis_title="Ngành",
+                    yaxis_title="Độ lệch chuẩn (%)",
+                    height=500,
+                    font=dict(size=14),
+                    title_font=dict(size=20, color="#145A32", family="Arial"),
+                    margin=dict(t=60, b=60, l=40, r=40)
+                )
+
+                # Hiển thị biểu đồ
+                st.plotly_chart(fig_line, use_container_width=True)
+                
+                # ==== Biểu đồ 6: Boxplot phân bố % thay đổi theo ngành ====
+                st.subheader("📦 Phân bố % thay đổi theo từng ngành (Boxplot)")
+
+                # Loại bỏ giá trị NaN
+                df_box = df.dropna(subset=["Industry", "Change"])
+
+                # Vẽ biểu đồ boxplot
+                fig_box = px.box(
+                    df_box,
+                    x="Industry",
+                    y="Change",
+                    points="all",  # Hiển thị toàn bộ điểm
+                    color="Industry",
+                    title="Phân bố % thay đổi theo từng ngành",
+                    labels={"Change": "% Thay đổi", "Industry": "Ngành"}
+                )
+                
+                # Định dạng hover với 2 chữ số thập phân
+                fig_box.update_traces(
+                    hovertemplate="<b>Ngành: %{x}</b><br>% Thay đổi: %{y:.2f}%<extra></extra>",
+                    marker=dict(opacity=0.5, size=6)
+                )
+
+                # Tùy chỉnh giao diện biểu đồ
+                fig_box.update_layout(
+                    template="plotly_white",
+                    height=700,
+                    xaxis_title="Ngành",
+                    yaxis_title="% Thay đổi",
+                    showlegend=False,
+                    font=dict(size=14),
+                    margin=dict(t=60, b=60, l=40, r=40)
+                )
+
+                st.plotly_chart(fig_box, use_container_width=True)
+                
+                # ==== Biểu đồ 7: Trung bình và Độ lệch chuẩn theo ngành ====
+                st.subheader("📊 Trung bình và Độ lệch chuẩn % thay đổi theo từng ngành")
+
+                # Tính toán thống kê
+                industry_stats = df.groupby("Industry")["Change"].agg(["mean", "std"]).reset_index()
+                industry_stats = industry_stats.dropna().sort_values("mean", ascending=False)
+                industry_stats = industry_stats.rename(columns={"mean": "Mean_Change", "std": "Std_Change"})
+
+                # Biểu đồ combo cột
+                fig_combo = go.Figure()
+
+                # Cột Trung bình
+                fig_combo.add_trace(go.Bar(
+                    x=industry_stats["Industry"],
+                    y=industry_stats["Mean_Change"],
+                    name="Trung bình (%)",
+                    marker_color='#2ECC71',
+                    hovertemplate="<b>%{x}</b><br>Trung bình: %{y:.2f}%<extra></extra>"
+                ))
+
+                # Cột Độ lệch chuẩn
+                fig_combo.add_trace(go.Bar(
+                    x=industry_stats["Industry"],
+                    y=industry_stats["Std_Change"],
+                    name="Độ lệch chuẩn (%)",
+                    marker_color='#F5B041',
+                    hovertemplate="<b>%{x}</b><br>Độ lệch chuẩn: %{y:.2f}%<extra></extra>"
+                ))
+
+                # Layout tùy chỉnh
+                fig_combo.update_layout(
+                    title="📊 Trung bình và Độ lệch chuẩn % thay đổi theo từng ngành",
+                    barmode='group',
+                    xaxis_title="Ngành",
+                    yaxis_title="Giá trị (%)",
+                    height=600,
+                    template="plotly_white",
+                    font=dict(size=14),
+                    margin=dict(t=60, b=60, l=40, r=40)
+                )
+
+                # Hiển thị biểu đồ
+                st.plotly_chart(fig_combo, use_container_width=True)         
+                
+                
 with tab8:
     st.title("📝 Phân tích tài chính doanh nghiệp")
 
