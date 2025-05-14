@@ -6,3 +6,4 @@ seaborn>=0.12.0
 altair>=4.2.2
 python-dotenv>=0.21.0  # (Nếu dùng biến môi trường)
 plotly
+statsmodels
