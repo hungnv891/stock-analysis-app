@@ -1466,7 +1466,7 @@ with tab6:
             st.markdown("</div>", unsafe_allow_html=True)
         
         # === 1. Tải lên thư viện nhóm ngành (upload & ghi đè nếu có) ===
-        st.header("📁 Thư viện nhóm ngành")
+        st.markdown("<h4>📁 Thư viện nhóm ngành</h4>", unsafe_allow_html=True)
 
         industry_file = st.file_uploader("Tải lên file thư viện nhóm ngành (CSV)", type=["csv"], key="industry_upload")
 
@@ -1478,25 +1478,36 @@ with tab6:
         # Đọc thư viện nếu đã có
         if os.path.exists("industry_library.csv"):
             df_industry_library = pd.read_csv("industry_library.csv")
-            st.caption(f"📅 Thư viện được cập nhật lần cuối: {pd.to_datetime(os.path.getmtime('industry_library.csv'), unit='s')}")
+            last_update = pd.to_datetime(os.path.getmtime('industry_library.csv'), unit='s')
+            st.markdown(f"<p style='font-size:18px; font-weight:500;'>📅 Thư viện được cập nhật lần cuối: {last_update.strftime('%d/%m/%Y %H:%M:%S')}</h5>", unsafe_allow_html=True)
+
         else:
             st.error("❌ Chưa có thư viện nhóm ngành. Vui lòng tải lên trước khi phân tích.")
             st.stop()
 
 
-
-        # Tải dữ liệu từ file CSV
-        st.title("📈 Phân tích Cổ Phiếu từ Dữ Liệu CSV (Theo Nhóm Ngành)")
-
-        # Tạo phần tải lên file CSV
+        # === 2. Tải lên file dữ liệu cổ phiếu ===
+        # Tải file CSV chứa dữ liệu cổ phiếu
+        st.markdown("<h4>📈 Phân tích Cổ Phiếu từ Dữ Liệu CSV (Theo Nhóm Ngành)</h4>", unsafe_allow_html=True)
         uploaded_file = st.file_uploader("Tải lên file CSV chứa dữ liệu cổ phiếu", type=["csv"])
 
+        # Nếu có file mới được tải lên → lưu lại
         if uploaded_file is not None:
-            # Đọc dữ liệu từ file CSV
-            df = pd.read_csv(uploaded_file)
+            with open("stock_data.csv", "wb") as f:
+                f.write(uploaded_file.read())
+            st.success("✅ Dữ liệu cổ phiếu đã được cập nhật!")
+
+        # Nếu file đã tồn tại (từ upload hoặc đã có trước), thì xử lý tiếp
+        if os.path.exists("stock_data.csv"):
+            try:
+                df = pd.read_csv("stock_data.csv")
+            except Exception as e:
+                st.error(f"❌ Lỗi khi đọc file CSV: {e}")
+                st.stop()
 
             # Kiểm tra và hiển thị dữ liệu
-            st.subheader("Dữ liệu đã tải lên:")
+            trading_date = pd.to_datetime(df['Date/Time'].iloc[0]).strftime("%d/%m/%Y")
+            st.markdown(f"<p style='font-size:18px; font-weight:500;'>📅 Dữ liệu ngày {trading_date} đã tải lên</p>", unsafe_allow_html=True)
             st.dataframe(df.head())
             
 
