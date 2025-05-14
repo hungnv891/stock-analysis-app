@@ -1427,18 +1427,63 @@ with tab6:
             
             # Chuyển DataFrame thành CSV
             csv = df_template.to_csv(index=False, encoding='utf-8')
+            return csv        
+        
+        # Tạo template thư viện nhóm ngành
+        def create_industry_library_template():
+            template_data = {
+                'Ticker': [''],     # ví dụ mã cổ phiếu
+                'Industry': ['']  # ví dụ nhóm ngành tương ứng
+            }
+            df_template = pd.DataFrame(template_data)
+            csv = df_template.to_csv(index=False, encoding='utf-8')
             return csv
-
+            
         # Tạo một nút tải về CSV
         csv_template = create_csv_template()
+        # Tạo nút tải template thư viện nhóm ngành
+        csv_industry_template = create_industry_library_template()        
+            
+        # ==== HIỂN THỊ HAI NÚT TẢI SONG SONG ====
+        col1, col2 = st.columns(2)
+        
+        with col1:   
+            # Nút tải về template CSV
+            st.download_button(
+                label="Tải template dữ liệu",
+                data=csv_template,
+                file_name="template.csv",
+                mime="text/csv"
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+        with col2:       
+            st.download_button(
+                label="📥 Tải template thư viện nhóm ngành",
+                data=csv_industry_template,
+                file_name="industry_library_template.csv",
+                mime="text/csv"
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # === 1. Tải lên thư viện nhóm ngành (upload & ghi đè nếu có) ===
+        st.header("📁 Thư viện nhóm ngành")
 
-        # Nút tải về template CSV
-        st.download_button(
-            label="Tải template CSV",
-            data=csv_template,
-            file_name="template.csv",
-            mime="text/csv"
-        )
+        industry_file = st.file_uploader("Tải lên file thư viện nhóm ngành (CSV)", type=["csv"], key="industry_upload")
+
+        if industry_file is not None:
+            with open("industry_library.csv", "wb") as f:
+                f.write(industry_file.read())
+            st.success("✅ Thư viện nhóm ngành đã được cập nhật!")
+
+        # Đọc thư viện nếu đã có
+        if os.path.exists("industry_library.csv"):
+            df_industry_library = pd.read_csv("industry_library.csv")
+            st.caption(f"📅 Thư viện được cập nhật lần cuối: {pd.to_datetime(os.path.getmtime('industry_library.csv'), unit='s')}")
+        else:
+            st.error("❌ Chưa có thư viện nhóm ngành. Vui lòng tải lên trước khi phân tích.")
+            st.stop()
+
+
 
         # Tải dữ liệu từ file CSV
         st.title("📈 Phân tích Cổ Phiếu từ Dữ Liệu CSV (Theo Nhóm Ngành)")
@@ -1453,6 +1498,7 @@ with tab6:
             # Kiểm tra và hiển thị dữ liệu
             st.subheader("Dữ liệu đã tải lên:")
             st.dataframe(df.head())
+            
 
             # Xử lý dữ liệu: chuyển đổi cột Date/Time sang định dạng ngày tháng
             df['Date/Time'] = pd.to_datetime(df['Date/Time'], format='%m/%d/%Y')
@@ -1460,6 +1506,19 @@ with tab6:
             # Cải thiện định dạng cột "close" và "Change" (làm tròn đến 2 chữ số thập phân)
             df['close'] = df['Close'].round(2)
             df['Change'] = df['Change'].round(2)
+            
+            
+            # === Gắn nhóm ngành từ thư viện ===
+            df = df.merge(df_industry_library, on='Ticker', how='left')
+
+            st.subheader("🔍 Dữ liệu sau khi gắn nhóm ngành:")
+            st.dataframe(df.head())
+
+            # Kiểm tra mã chưa có ngành
+            missing = df[df['Industry'].isna()]['Ticker'].unique()
+            if len(missing) > 0:
+                st.warning(f"⚠️ Có {len(missing)} mã chưa có nhóm ngành trong thư viện.")
+                st.write(missing)
 
             # ==== Dropdown cho người dùng chọn Phân Tích Ngành hay Thị Trường ====
             analysis_options = ['Phân tích Thị Trường', 'Phân tích Ngành']
@@ -1469,7 +1528,7 @@ with tab6:
                 # ==== Phân tích Ngành ====
 
                 # Dropdown cho người dùng chọn nhóm ngành hoặc tất cả các mã
-                industry_options = ['Tất cả'] + df['Industry'].unique().tolist()
+                industry_options = ['Tất cả'] + sorted(df['Industry'].dropna().unique().tolist())
                 selected_industry = st.selectbox("Chọn nhóm ngành để phân tích", industry_options)
 
                 # Lọc dữ liệu theo nhóm ngành được chọn
