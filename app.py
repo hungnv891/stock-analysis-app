@@ -1508,7 +1508,7 @@ with tab6:
             # Kiểm tra và hiển thị dữ liệu
             trading_date = pd.to_datetime(df['Date/Time'].iloc[0]).strftime("%d/%m/%Y")
             st.markdown(f"<p style='font-size:18px; font-weight:500;'>📅 Dữ liệu ngày {trading_date} đã tải lên</p>", unsafe_allow_html=True)
-            st.dataframe(df.head())
+            #st.dataframe(df.head())
             
 
             # Xử lý dữ liệu: chuyển đổi cột Date/Time sang định dạng ngày tháng
@@ -1523,7 +1523,7 @@ with tab6:
             df = df.merge(df_industry_library, on='Ticker', how='left')
 
             st.subheader("🔍 Dữ liệu sau khi gắn nhóm ngành:")
-            st.dataframe(df.head())
+            #st.dataframe(df.head())
 
             # Kiểm tra mã chưa có ngành
             missing = df[df['Industry'].isna()]['Ticker'].unique()
@@ -1748,7 +1748,8 @@ with tab6:
                     'close': 'mean', 
                     'Change': 'mean', 
                     'Volume': 'sum'
-                }).reset_index()
+                }).reset_index()              
+                
                 
                 # ==== Biểu đồ 1: Biểu đồ tổng quan thị trường theo ngành ====
                 # ==== Tính toán dữ liệu bổ sung ====
@@ -1770,39 +1771,79 @@ with tab6:
                     lambda row: f"{row['Industry']}<br>Tổng mã: {row['Tăng'] + row['Giảm'] + row['Không đổi']}<br>"
                                 f"Tăng: {row['Tăng']} | Giảm: {row['Giảm']} | Không đổi: {row['Không đổi']}", axis=1
                 )
-
-                # Biểu đồ Hình Tròn
-                fig_market = px.pie(
-                    df_combined,
-                    names='Industry',
-                    values='Volume',
-                    title="Tỷ trọng khối lượng giao dịch theo ngành",
-                    hole=0.4,
-                    color_discrete_sequence=px.colors.qualitative.Set3
+                
+                # Phân loại tăng/giảm/không đổi
+                df['change_category'] = pd.cut(
+                    df['Change'],
+                    bins=[-float('inf'), -0.01, 0.01, float('inf')],
+                    labels=['Giảm', 'Không đổi', 'Tăng']
                 )
 
-                # Gán customdata thủ công và chỉnh hovertemplate
-                fig_market.update_traces(
-                    customdata=df_combined[['custom_label']].values,  # Truyền customdata đúng cách, chỉ lấy custom_label
-                    hovertemplate=(
-                        "<b>%{label}</b><br>" +  # Hiển thị tên ngành
-                        "%{customdata[0]}<br>" +  # Hiển thị chi tiết từ customdata[0]
-                        "Khối lượng: %{value:,}<br>" +  # Hiển thị khối lượng
-                        "<extra></extra>"  # Bỏ phần thông tin thêm (mặc định)
-                    ),
-                    textinfo='label',  # Hiển thị chỉ tên ngành trên nhãn
-                    textposition='inside'  # Đặt nhãn bên trong hình tròn
-                )
+                # Đếm số lượng mã tăng/giảm/không đổi
+                market_counts = df['change_category'].value_counts().reset_index()
+                market_counts.columns = ['Thay đổi', 'Số lượng']
+                
+                # Tạo 2 cột song song để chứa 2 biểu đồ tròn
+                col1, col2 = st.columns(2)
+                
+                
+                # Biểu đồ 1: Số mã tăng/giảm/không đổi trong toàn thị trường
+                with col1:
+                    # Biểu đồ Hình Tròn
+                    fig_market = px.pie(
+                        df_combined,
+                        names='Industry',
+                        values='Volume',
+                        title="Tỷ trọng khối lượng giao dịch theo ngành",
+                        hole=0.4,
+                        color_discrete_sequence=px.colors.qualitative.Set3
+                    )
 
-                # Thay đổi layout để biểu đồ lớn hơn
-                fig_market.update_layout(
-                    title="Tỷ trọng khối lượng giao dịch theo ngành",
-                    margin=dict(t=50, l=50, r=50, b=50),  # Điều chỉnh lề để mở rộng không gian
-                    width=800,  # Chiều rộng của biểu đồ
-                    height=600  # Chiều cao của biểu đồ
-                )
+                    # Gán customdata thủ công và chỉnh hovertemplate
+                    fig_market.update_traces(
+                        customdata=df_combined[['custom_label']].values,  # Truyền customdata đúng cách, chỉ lấy custom_label
+                        hovertemplate=(
+                            "<b>%{label}</b><br>" +  # Hiển thị tên ngành
+                            "%{customdata[0]}<br>" +  # Hiển thị chi tiết từ customdata[0]
+                            "Khối lượng: %{value:,}<br>" +  # Hiển thị khối lượng
+                            "<extra></extra>"  # Bỏ phần thông tin thêm (mặc định)
+                        ),
+                        textinfo='label',  # Hiển thị chỉ tên ngành trên nhãn
+                        textposition='inside'  # Đặt nhãn bên trong hình tròn
+                    )
 
-                st.plotly_chart(fig_market, use_container_width=True)
+                    # Thay đổi layout để biểu đồ lớn hơn
+                    fig_market.update_layout(
+                        title="Tỷ trọng khối lượng giao dịch theo ngành",
+                        margin=dict(t=50, l=50, r=50, b=50),  # Điều chỉnh lề để mở rộng không gian
+                        width=800,  # Chiều rộng của biểu đồ
+                        height=600  # Chiều cao của biểu đồ
+                    )
+
+                    st.plotly_chart(fig_market, use_container_width=True)
+                
+                
+                # Biểu đồ 2: Tỷ trọng khối lượng giao dịch theo ngành
+                with col2:
+                    # Biểu đồ Hình Tròn về số mã tăng/giảm/không đổi
+                    fig_market = px.pie(
+                        market_counts,
+                        names='Thay đổi',
+                        values='Số lượng',
+                        title="Số mã tăng/giảm/không đổi trong toàn thị trường",
+                        color='Thay đổi',
+                        color_discrete_sequence=['#4CAF50', '#F44336', '#FFEB3B']
+                    )
+
+                    # Cải thiện biểu đồ
+                    fig_market.update_layout(
+                        title="Số mã tăng/giảm/không đổi trong toàn thị trường",
+                        margin=dict(t=50, l=50, r=50, b=50),  # Điều chỉnh lề
+                        width=800,  # Chiều rộng của biểu đồ
+                        height=600  # Chiều cao của biểu đồ
+                    )
+
+                    st.plotly_chart(fig_market, use_container_width=True)
 
                 # ==== Biểu đồ 2: Biểu đồ thay đổi giá trung bình theo ngành ====
                 st.subheader("📈 Biểu đồ thay đổi giá trung bình theo ngành")
