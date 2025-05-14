@@ -2,6 +2,9 @@ from analyzer import analyze_stock, export_to_excel
 from datetime import date
 from vnstock import Vnstock
 from concurrent.futures import ThreadPoolExecutor
+from plotly.subplots import make_subplots
+from io import StringIO
+from datetime import timedelta
 import plotly.graph_objects as go
 import plotly.express as px
 import matplotlib.pyplot as plt
@@ -14,8 +17,8 @@ import pandas as pd
 import streamlit as st
 import seaborn as sns
 import re
-from io import StringIO
 import plotly.figure_factory as ff
+
 
 
 st.set_page_config(page_title='Phân Tích Cổ Phiếu', layout='wide')
@@ -648,7 +651,7 @@ with tab3:
             if df_candle is None or df_candle.empty or 'time' not in df_candle.columns:
                 st.warning("Không có dữ liệu cho mã cổ phiếu và khoảng thời gian đã chọn.")
             else:
-                df_candle['time'] = pd.to_datetime(df_candle['time'])
+                df_candle['time'] = pd.to_datetime(df_candle['time'])  # GIỮ nguyên datetime
                 df_candle.set_index('time', inplace=True)
 
                 if timeframe in ['W', 'M']:
@@ -662,8 +665,25 @@ with tab3:
 
                 df_candle.reset_index(inplace=True)
                 
-                # Chuyển đổi thời gian sang định dạng ngày ngắn gọn
-                df_candle['time'] = pd.to_datetime(df_candle['time']).dt.strftime('%d-%m')
+                # Tính toán các thay đổi
+                df_candle['delta_price'] = df_candle['close'] - df_candle['open']
+                df_candle['delta_volume'] = df_candle['volume'].diff()
+                # Tính phần trăm thay đổi theo ngày
+                df_candle = df_candle.sort_values('time')
+                df_candle['pct_change_price'] = df_candle['close'].pct_change() * 100
+                df_candle['pct_change_volume'] = df_candle['volume'].pct_change() * 100
+
+                # Làm tròn 2 chữ số
+                df_candle['pct_change_price'] = df_candle['pct_change_price'].round(2)
+                df_candle['pct_change_volume'] = df_candle['pct_change_volume'].round(2)
+
+                # Lọc dữ liệu 30 và 90 ngày gần nhất
+                latest_time = df_candle['time'].max()
+                df_box_30 = df_candle[df_candle['time'] >= latest_time - timedelta(days=30)].copy()
+                df_box_90 = df_candle[df_candle['time'] >= latest_time - timedelta(days=90)].copy()
+
+                # ✅ Cột thời gian hiển thị để dùng trong biểu đồ (dạng chuỗi ngắn gọn)
+                df_candle['time_str'] = df_candle['time'].dt.strftime('%d-%m')
 
                 # Tính các đường MA
                 df_candle['MA5'] = df_candle['close'].rolling(window=5).mean()
@@ -671,7 +691,7 @@ with tab3:
                 df_candle['MA50'] = df_candle['close'].rolling(window=50).mean()
 
                 fig = go.Figure(data=[go.Candlestick(
-                    x=df_candle['time'],
+                    x=df_candle['time_str'],
                     open=df_candle['open'],
                     high=df_candle['high'],
                     low=df_candle['low'],
@@ -684,7 +704,7 @@ with tab3:
                 # Thêm các đường MA nếu người dùng chọn hiển thị
                 if show_ma5:
                     fig.add_trace(go.Scatter(
-                        x=df_candle['time'],
+                        x=df_candle['time_str'],
                         y=df_candle['MA5'],
                         mode='lines',
                         name='MA 5',
@@ -693,7 +713,7 @@ with tab3:
 
                 if show_ma20:
                     fig.add_trace(go.Scatter(
-                        x=df_candle['time'],
+                        x=df_candle['time_str'],
                         y=df_candle['MA20'],
                         mode='lines',
                         name='MA 20',
@@ -702,7 +722,7 @@ with tab3:
 
                 if show_ma50:
                     fig.add_trace(go.Scatter(
-                        x=df_candle['time'],
+                        x=df_candle['time_str'],
                         y=df_candle['MA50'],
                         mode='lines',
                         name='MA 50',
@@ -721,7 +741,7 @@ with tab3:
                         zeroline=False,
                         type='category',  # Loại bỏ các ngày không có giao dịch
                         tickmode='array',
-                        tickvals=df_candle['time'],  # Hiển thị các giá trị có dữ liệu
+                        tickvals=df_candle['time_str'],  # Hiển thị các giá trị có dữ liệu
                         tickangle=45  # Góc quay các nhãn để tránh chồng chéo
                     ),
                     yaxis=dict(
@@ -735,7 +755,7 @@ with tab3:
                 # Biểu đồ khối lượng
                 fig_volume = go.Figure()
                 fig_volume.add_trace(go.Bar(
-                    x=df_candle['time'],
+                    x=df_candle['time_str'],
                     y=df_candle['volume'],
                     marker_color='orange',
                     name='Khối lượng'
@@ -752,7 +772,7 @@ with tab3:
                         zeroline=False,
                         type='category',  # Loại bỏ các ngày không có giao dịch
                         tickmode='array',
-                        tickvals=df_candle['time'],  # Hiển thị các giá trị có dữ liệu
+                        tickvals=df_candle['time_str'],  # Hiển thị các giá trị có dữ liệu
                         tickangle=45  # Góc quay các nhãn để tránh chồng chéo
                     ),
                     yaxis=dict(
@@ -763,6 +783,139 @@ with tab3:
 
                 # Hiển thị biểu đồ khối lượng
                 st.plotly_chart(fig_volume, use_container_width=True)
+                
+                
+                ##✅ Vẽ biểu đồ tương quan có yếu tố thời gian
+                # Giới hạn dữ liệu trong 30 ngày gần nhất
+                last_30_days = df_candle['time'].max() - timedelta(days=30)
+                # Sắp xếp theo thời gian giảm dần và lấy 30 dòng gần nhất
+                df_corr = df_candle.sort_values("time", ascending=False).head(30).sort_values("time")
+                
+                
+                
+                # ✅ Vẽ biểu đồ tương quan có yếu tố thời gian
+                fig_corr = px.scatter(
+                    df_corr,
+                    x="close",
+                    y="volume",
+                    color="time",  # thời gian thể hiện bằng màu
+                    labels={"close": "Giá đóng cửa", "volume": "Khối lượng", "time": "Thời gian"},
+                    title="Tương quan giữa Giá đóng cửa và Khối lượng (30 ngày gần nhất)",
+                    trendline="ols"
+                )
+                st.plotly_chart(fig_corr, use_container_width=True)   
+
+
+                # Biểu đồ line giá & khối lượng 
+                # ✅ Biểu đồ line với cả close và volume (2 y-axis)
+                fig_line = go.Figure()
+
+                # Line 1: Giá đóng cửa (close)
+                fig_line.add_trace(go.Scatter(
+                    x=df_candle['time_str'],
+                    y=df_candle['close'],
+                    mode='lines+markers',
+                    name='Giá đóng cửa',
+                    line=dict(color='blue'),
+                    yaxis='y1'
+                ))
+
+                # Line 2: Khối lượng (volume) trên trục y thứ 2
+                fig_line.add_trace(go.Scatter(
+                    x=df_candle['time_str'],
+                    y=df_candle['volume'],
+                    mode='lines+markers',
+                    name='Khối lượng',
+                    line=dict(color='orange'),
+                    yaxis='y2'
+                ))
+
+                fig_line.update_layout(
+                    title='Biểu đồ Giá và Khối lượng theo Thời gian',
+                    xaxis=dict(title='Ngày', type='category', tickangle=45),
+                    yaxis=dict(
+                        title='Giá đóng cửa',
+                        showgrid=False
+                    ),
+                    yaxis2=dict(
+                        title='Khối lượng',
+                        overlaying='y',
+                        side='right',
+                        showgrid=False
+                    ),
+                    legend=dict(x=0.01, y=0.99),
+                    height=400,
+                    margin=dict(l=0, r=0, t=40, b=0)
+                )
+
+                st.plotly_chart(fig_line, use_container_width=True)
+                
+                #✅ Boxplot cho 30 và 90 ngày
+                # Tạo biến ngày giới hạn
+                max_date = df_candle['time'].max()
+                min_date_30 = max_date - pd.Timedelta(days=30)
+                min_date_90 = max_date - pd.Timedelta(days=90)
+
+                # Lọc dữ liệu
+                df_30 = df_candle[(df_candle['time'] >= min_date_30) & (df_candle['time'] <= max_date)].copy()
+                df_90 = df_candle[(df_candle['time'] >= min_date_90) & (df_candle['time'] <= max_date)].copy()
+
+                # Kiểm tra dữ liệu không rỗng
+                if not df_30.empty and not df_90.empty:
+                    # Boxplot cho 30 ngày
+                    fig_box_30 = make_subplots(rows=1, cols=2, subplot_titles=(
+                        "📦 Biến động giá (%) – 30 ngày", "📦 Biến động khối lượng (%) – 30 ngày"))
+
+                    fig_box_30.add_trace(go.Box(
+                        y=df_30['pct_change_price'],
+                        boxpoints='outliers',
+                        name="Giá",
+                        marker_color='green'
+                    ), row=1, col=1)
+
+                    fig_box_30.add_trace(go.Box(
+                        y=df_30['pct_change_volume'],
+                        boxpoints='outliers',
+                        name="Khối lượng",
+                        marker_color='orange'
+                    ), row=1, col=2)
+
+                    fig_box_30.update_layout(
+                        title_text=f"Biến động theo ngày trong 30 ngày gần nhất – {symbol}",
+                        height=500,
+                        template='plotly_white'
+                    )
+
+                    st.plotly_chart(fig_box_30, use_container_width=True)
+
+                    # Boxplot cho 90 ngày
+                    fig_box_90 = make_subplots(rows=1, cols=2, subplot_titles=(
+                        "📦 Biến động giá (%) – 90 ngày", "📦 Biến động khối lượng (%) – 90 ngày"))
+
+                    fig_box_90.add_trace(go.Box(
+                        y=df_90['pct_change_price'],
+                        boxpoints='outliers',
+                        name="Giá",
+                        marker_color='blue'
+                    ), row=1, col=1)
+
+                    fig_box_90.add_trace(go.Box(
+                        y=df_90['pct_change_volume'],
+                        boxpoints='outliers',
+                        name="Khối lượng",
+                        marker_color='red'
+                    ), row=1, col=2)
+
+                    fig_box_90.update_layout(
+                        title_text=f"Biến động theo ngày trong 90 ngày gần nhất – {symbol}",
+                        height=500,
+                        template='plotly_white'
+                    )
+
+                    st.plotly_chart(fig_box_90, use_container_width=True)
+                else:
+                    st.warning("Không đủ dữ liệu để tạo boxplot cho 30 hoặc 90 ngày.")        
+                
 
                 st.download_button(
                     label="📥 Tải dữ liệu giá lịch sử (.CSV)",
@@ -1026,15 +1179,21 @@ with tab6:
                             df_boxplot_30_clean,
                             x='symbol',
                             y='pct_change',
+                            color='symbol',  # Mỗi mã cổ phiếu một màu
                             points="outliers",
-                            title="📦 Boxplot – Biến động giá (%) trong 30 ngày gần nhất"
+                            title="📦 Boxplot – Biến động giá (%) trong 30 ngày gần nhất",
+                            template="seaborn",  # Giao diện đẹp mắt hơn
+                            color_discrete_sequence=px.colors.qualitative.Set2  # Bảng màu nhẹ nhàng
                         )
 
                         fig_box_30.update_layout(
                             xaxis_title="Mã cổ phiếu",
                             yaxis_title="% Thay đổi giá theo ngày",
                             height=600,
-                            template="plotly_white"
+                            title_font_size=22,
+                            title_x=0.0,  # Căn giữa tiêu đề
+                            font=dict(size=14),
+                            showlegend=False  # Ẩn chú thích nếu không cần
                         )
 
                         st.plotly_chart(fig_box_30, use_container_width=True)
@@ -1064,15 +1223,21 @@ with tab6:
                             df_boxplot_90_clean,
                             x='symbol',
                             y='pct_change',
+                            color='symbol',
                             points="outliers",
-                            title="📦 Boxplot – Biến động giá (%) trong 90 ngày gần nhất"
+                            title="📦 Boxplot – Biến động giá (%) trong 90 ngày gần nhất",
+                            template="seaborn",
+                            color_discrete_sequence=px.colors.qualitative.Set2
                         )
 
                         fig_box_90.update_layout(
                             xaxis_title="Mã cổ phiếu",
                             yaxis_title="% Thay đổi giá theo ngày",
                             height=600,
-                            template="plotly_white"
+                            title_font_size=22,
+                            title_x=0.0,
+                            font=dict(size=14),
+                            showlegend=False
                         )
 
                         st.plotly_chart(fig_box_90, use_container_width=True)
