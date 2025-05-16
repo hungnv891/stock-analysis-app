@@ -1832,7 +1832,11 @@ with tab6:
                         values='Số lượng',
                         title="Số mã tăng/giảm/không đổi trong toàn thị trường",
                         color='Thay đổi',
-                        color_discrete_sequence=['#4CAF50', '#F44336', '#FFEB3B']
+                        color_discrete_map={
+                            'Tăng': '#2ECC71',       # Xanh lá cây nhẹ
+                            'Giảm': '#E74C3C',       # Đỏ mềm
+                            'Không đổi': '#F1C40F'   # Vàng nhẹ
+                        }
                     )
 
                     # Cải thiện biểu đồ
