@@ -625,35 +625,56 @@ with tab2:
 # ==== TAB 3 ====            
 with tab3:
     st.title("📊 Biểu Đồ Nến Nhật – Giá Cổ Phiếu")
-
     st.markdown("Chọn mã cổ phiếu, khoảng thời gian và khung thời gian để xem biểu đồ giá.")
 
-    symbol = st.text_input("Nhập mã cổ phiếu:", value="VNM", key="symbol_tab5").strip().upper()
-    start_date = st.date_input("Ngày bắt đầu", value=date(2025, 1, 1))
-    end_date = st.date_input("Ngày kết thúc", value=date.today())
+    with st.form("form_candle_tab3"):
+        # ====== Nhập thông tin cơ bản ======
+        symbol = st.text_input("Nhập mã cổ phiếu:", value="VNM", key="symbol_tab3").strip().upper()
+        col_date1, col_date2 = st.columns(2)
+        with col_date1:
+            start_date = st.date_input("📅 Ngày bắt đầu", value=date(2025, 1, 1), key="start_tab3")
+        with col_date2:
+            end_date = st.date_input("📅 Ngày kết thúc", value=date.today(), key="end_tab3")
 
-    timeframe = st.selectbox("Khung thời gian:", options=["D", "W", "M"], index=0, 
-                             format_func=lambda x: {"D": "Ngày", "W": "Tuần", "M": "Tháng"}[x])
+        timeframe = st.selectbox("⏱ Khung thời gian:", options=["D", "W", "M"], index=0, key="tf_tab3",
+                                 format_func=lambda x: {"D": "Ngày", "W": "Tuần", "M": "Tháng"}[x])
 
-    # Tùy chọn hiển thị các đường MA
-    show_ma5 = st.checkbox("Hiển thị MA 5", value=True)
-    show_ma20 = st.checkbox("Hiển thị MA 20", value=True)
-    show_ma50 = st.checkbox("Hiển thị MA 50", value=True)
+        # ====== Tùy chọn hiển thị MA ======
+        st.markdown("### Đường trung bình động (MA)")
+        col_ma1, col_ma2, col_ma3 = st.columns(3)
+        with col_ma1:
+            show_ma5 = st.checkbox("Hiển thị MA 5", value=True, key="ma5_tab3")
+        with col_ma2:
+            show_ma20 = st.checkbox("Hiển thị MA 20", value=True, key="ma20_tab3")
+        with col_ma3:
+            show_ma50 = st.checkbox("Hiển thị MA 50", value=True, key="ma50_tab3")
 
-    if st.button("📊 Hiển thị biểu đồ", key="btn_tab5"):
+        # ====== Kỳ phân tích ======
+        period_days = st.selectbox("🔍 Chọn kỳ phân tích:", options=[30, 60, 90], index=0, key="period_days_tab3",
+                                   format_func=lambda x: f"{x} ngày")
+
+        # Nút submit
+        submitted = st.form_submit_button("📊 Hiển thị biểu đồ")
+
+    if submitted:
         try:
             from vnstock import Vnstock
             import plotly.graph_objects as go
+            import plotly.express as px
+            import pandas as pd
+            from datetime import timedelta
+            from plotly.subplots import make_subplots
 
-            stock = Vnstock().stock(symbol=symbol, source='VCI')
+            stock = Vnstock().stock(symbol=symbol, source="VCI")
             df_candle = stock.quote.history(start=str(start_date), end=str(end_date))
 
             if df_candle is None or df_candle.empty or 'time' not in df_candle.columns:
-                st.warning("Không có dữ liệu cho mã cổ phiếu và khoảng thời gian đã chọn.")
+                st.warning("⚠️ Không có dữ liệu cho mã cổ phiếu và khoảng thời gian đã chọn.")
             else:
-                df_candle['time'] = pd.to_datetime(df_candle['time'])  # GIỮ nguyên datetime
+                df_candle['time'] = pd.to_datetime(df_candle['time'])
                 df_candle.set_index('time', inplace=True)
 
+                # Resample theo khung thời gian nếu cần
                 if timeframe in ['W', 'M']:
                     df_candle = df_candle.resample(timeframe).agg({
                         'open': 'first',
@@ -664,32 +685,19 @@ with tab3:
                     }).dropna()
 
                 df_candle.reset_index(inplace=True)
-                
-                # Tính toán các thay đổi
-                df_candle['delta_price'] = df_candle['close'] - df_candle['open']
-                df_candle['delta_volume'] = df_candle['volume'].diff()
-                # Tính phần trăm thay đổi theo ngày
                 df_candle = df_candle.sort_values('time')
-                df_candle['pct_change_price'] = df_candle['close'].pct_change() * 100
-                df_candle['pct_change_volume'] = df_candle['volume'].pct_change() * 100
-
-                # Làm tròn 2 chữ số
-                df_candle['pct_change_price'] = df_candle['pct_change_price'].round(2)
-                df_candle['pct_change_volume'] = df_candle['pct_change_volume'].round(2)
-
-                # Lọc dữ liệu 30 và 90 ngày gần nhất
-                latest_time = df_candle['time'].max()
-                df_box_30 = df_candle[df_candle['time'] >= latest_time - timedelta(days=30)].copy()
-                df_box_90 = df_candle[df_candle['time'] >= latest_time - timedelta(days=90)].copy()
-
-                # ✅ Cột thời gian hiển thị để dùng trong biểu đồ (dạng chuỗi ngắn gọn)
                 df_candle['time_str'] = df_candle['time'].dt.strftime('%d-%m')
+                
+                # Tính phần trăm thay đổi giá và khối lượng
+                df_candle['close_pct_change'] = df_candle['close'].pct_change() * 100
+                df_candle['volume_pct_change'] = df_candle['volume'].pct_change() * 100
 
                 # Tính các đường MA
                 df_candle['MA5'] = df_candle['close'].rolling(window=5).mean()
                 df_candle['MA20'] = df_candle['close'].rolling(window=20).mean()
                 df_candle['MA50'] = df_candle['close'].rolling(window=50).mean()
 
+                # Biểu đồ nến Nhật
                 fig = go.Figure(data=[go.Candlestick(
                     x=df_candle['time_str'],
                     open=df_candle['open'],
@@ -701,88 +709,87 @@ with tab3:
                     name='Nến Nhật'
                 )])
 
-                # Thêm các đường MA nếu người dùng chọn hiển thị
                 if show_ma5:
                     fig.add_trace(go.Scatter(
-                        x=df_candle['time_str'],
-                        y=df_candle['MA5'],
-                        mode='lines',
-                        name='MA 5',
-                        line=dict(color='blue', width=2)
+                        x=df_candle['time_str'], y=df_candle['MA5'], mode='lines',
+                        name='MA 5', line=dict(color='blue', width=2)
                     ))
-
                 if show_ma20:
                     fig.add_trace(go.Scatter(
-                        x=df_candle['time_str'],
-                        y=df_candle['MA20'],
-                        mode='lines',
-                        name='MA 20',
-                        line=dict(color='orange', width=2)
+                        x=df_candle['time_str'], y=df_candle['MA20'], mode='lines',
+                        name='MA 20', line=dict(color='orange', width=2)
                     ))
-
                 if show_ma50:
                     fig.add_trace(go.Scatter(
-                        x=df_candle['time_str'],
-                        y=df_candle['MA50'],
-                        mode='lines',
-                        name='MA 50',
-                        line=dict(color='purple', width=2)
+                        x=df_candle['time_str'], y=df_candle['MA50'], mode='lines',
+                        name='MA 50', line=dict(color='purple', width=2)
                     ))
 
                 fig.update_layout(
-                    title=f'Biểu đồ Nến Nhật: {symbol} ({ {"D":"Ngày","W":"Tuần","M":"Tháng"}[timeframe] })',
-                    xaxis_title='Ngày',
+                    title=f'Biểu đồ Nến Nhật: {symbol} ({ {"D":"Ngày", "W":"Tuần", "M":"Tháng"}[timeframe] })',
+                    xaxis_title='Thời gian',
                     yaxis_title='Giá',
                     xaxis_rangeslider_visible=False,
                     height=500,
-                    margin=dict(l=0, r=0, t=40, b=0),  # Loại bỏ các khoảng trống
                     xaxis=dict(
-                        showgrid=False,
-                        zeroline=False,
-                        type='category',  # Loại bỏ các ngày không có giao dịch
-                        tickmode='array',
-                        tickvals=df_candle['time_str'],  # Hiển thị các giá trị có dữ liệu
-                        tickangle=45  # Góc quay các nhãn để tránh chồng chéo
-                    ),
-                    yaxis=dict(
-                        showgrid=False,
-                        zeroline=False
+                        type='category',
+                        tickangle=45
                     )
                 )
-
                 st.plotly_chart(fig, use_container_width=True)
-                
+
                 # Biểu đồ khối lượng
-                fig_volume = go.Figure()
-                fig_volume.add_trace(go.Bar(
+                fig_vol = go.Figure()
+                fig_vol.add_trace(go.Bar(
                     x=df_candle['time_str'],
                     y=df_candle['volume'],
                     marker_color='orange',
                     name='Khối lượng'
                 ))
-
-                fig_volume.update_layout(
-                    title='📊 Khối Lượng Giao Dịch',
-                    xaxis_title='Ngày',
+                fig_vol.update_layout(
+                    title='Khối Lượng Giao Dịch',
+                    xaxis_title='Thời gian',
                     yaxis_title='Khối lượng',
                     height=300,
-                    margin=dict(l=0, r=0, t=40, b=0),  # Loại bỏ các khoảng trống
-                    xaxis=dict(
-                        showgrid=False,
-                        zeroline=False,
-                        type='category',  # Loại bỏ các ngày không có giao dịch
-                        tickmode='array',
-                        tickvals=df_candle['time_str'],  # Hiển thị các giá trị có dữ liệu
-                        tickangle=45  # Góc quay các nhãn để tránh chồng chéo
-                    ),
-                    yaxis=dict(
-                        showgrid=False,
-                        zeroline=False
-                    )
+                    xaxis=dict(type='category', tickangle=45)
                 )
+                st.plotly_chart(fig_vol, use_container_width=True)
 
-                # Hiển thị biểu đồ khối lượng
-                st.plotly_chart(fig_volume, use_container_width=True)
+                # ====== THỐNG KÊ TRONG KỲ ======
+                df_period = df_candle[df_candle['time'] >= df_candle['time'].max() - timedelta(days=period_days)].copy()
+                df_period['pct_change'] = ((df_period['close'] - df_period['open']) / df_period['open'] * 100).round(2)
+                df_period['type'] = df_period['pct_change'].apply(lambda x: 'Tăng' if x > 0 else 'Giảm' if x < 0 else 'Không đổi')
+
+                summary = df_period.groupby('type').agg({
+                    'pct_change': ['count', 'mean']
+                }).reset_index()
+                summary.columns = ['Loại phiên', 'Số phiên', 'Thay đổi TB (%)']
+                summary['Thay đổi TB (%)'] = summary['Thay đổi TB (%)'].round(2)
+
+                col1, col2 = st.columns(2)
+                with col1:
+                    fig_pie = px.pie(
+                        summary,
+                        names='Loại phiên',
+                        values='Số phiên',
+                        title=f"Tỷ lệ phiên theo loại trong {period_days} ngày gần nhất",
+                        color='Loại phiên',
+                        color_discrete_map={
+                            'Tăng': '#2ECC71',
+                            'Giảm': '#E74C3C',
+                            'Không đổi': '#F1C40F'
+                        },
+                        hole=0.4  # Nếu muốn dạng donut chart, có thể bỏ nếu không cần
+                    )
+
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                with col2:
+                    st.plotly_chart(px.bar(
+                        summary, x='Loại phiên', y='Thay đổi TB (%)', color='Loại phiên',
+                        title=f"Thay đổi trung bình (%) trong {period_days} ngày gần nhất",
+                        color_discrete_map={'Tăng': '#2ECC71', 'Giảm': '#E74C3C', 'Không đổi': '#F1C40F'}
+                    ), use_container_width=True)
+
                 
                 
                 ##✅ Vẽ biểu đồ tương quan có yếu tố thời gian
@@ -867,14 +874,14 @@ with tab3:
                         "📦 Biến động giá (%) – 30 ngày", "📦 Biến động khối lượng (%) – 30 ngày"))
 
                     fig_box_30.add_trace(go.Box(
-                        y=df_30['pct_change_price'],
+                        y=df_30['close_pct_change'],
                         boxpoints='outliers',
                         name="Giá",
                         marker_color='green'
                     ), row=1, col=1)
 
                     fig_box_30.add_trace(go.Box(
-                        y=df_30['pct_change_volume'],
+                        y=df_30['volume_pct_change'],
                         boxpoints='outliers',
                         name="Khối lượng",
                         marker_color='orange'
@@ -893,14 +900,14 @@ with tab3:
                         "📦 Biến động giá (%) – 90 ngày", "📦 Biến động khối lượng (%) – 90 ngày"))
 
                     fig_box_90.add_trace(go.Box(
-                        y=df_90['pct_change_price'],
+                        y=df_90['close_pct_change'],
                         boxpoints='outliers',
                         name="Giá",
                         marker_color='blue'
                     ), row=1, col=1)
 
                     fig_box_90.add_trace(go.Box(
-                        y=df_90['pct_change_volume'],
+                        y=df_90['volume_pct_change'],
                         boxpoints='outliers',
                         name="Khối lượng",
                         marker_color='red'
@@ -1433,7 +1440,8 @@ with tab6:
         def create_industry_library_template():
             template_data = {
                 'Ticker': [''],     # ví dụ mã cổ phiếu
-                'Industry': ['']  # ví dụ nhóm ngành tương ứng
+                'Industry': [''],  # ví dụ nhóm ngành tương ứng
+                'OutstandingShares': [0]  # ví dụ số lượng cổ phiếu lưu hành
             }
             df_template = pd.DataFrame(template_data)
             csv = df_template.to_csv(index=False, encoding='utf-8')
@@ -1478,6 +1486,10 @@ with tab6:
         # Đọc thư viện nếu đã có
         if os.path.exists("industry_library.csv"):
             df_industry_library = pd.read_csv("industry_library.csv")
+            # Kiểm tra nếu thiếu cột OutstandingShares thì cảnh báo
+            if 'OutstandingShares' not in df_industry_library.columns:
+                st.warning("⚠️ File thư viện chưa có cột 'OutstandingShares' (Số lượng cổ phiếu lưu hành). Vui lòng cập nhật lại.")
+                df_industry_library['OutstandingShares'] = 0  # thêm cột mặc định 0 để tránh lỗi
             last_update = pd.to_datetime(os.path.getmtime('industry_library.csv'), unit='s')
             st.markdown(f"<p style='font-size:18px; font-weight:500;'>📅 Thư viện được cập nhật lần cuối: {last_update.strftime('%d/%m/%Y %H:%M:%S')}</h5>", unsafe_allow_html=True)
 
@@ -1521,6 +1533,9 @@ with tab6:
             
             # === Gắn nhóm ngành từ thư viện ===
             df = df.merge(df_industry_library, on='Ticker', how='left')
+            # Tính vốn hóa nếu có OutstandingShares
+            if 'OutstandingShares' in df.columns:
+                df['MarketCap'] = df['OutstandingShares'] * df['close']
 
             st.subheader("🔍 Dữ liệu sau khi gắn nhóm ngành:")
             #st.dataframe(df.head())
@@ -1591,6 +1606,43 @@ with tab6:
 
                 # Hiển thị biểu đồ
                 st.plotly_chart(fig_tree, use_container_width=True)
+                
+                
+                # ==== TreeMap 2: Dựa trên Vốn hóa thị trường ====
+                st.subheader("💰 Tree Map – Biến động giá và Vốn hóa thị trường")
+
+                # Tính vốn hóa nếu chưa có
+                if 'MarketCap' not in df_filtered.columns:
+                    df_filtered['MarketCap'] = df_filtered['OutstandingShares'] * df_filtered['close']
+
+                fig_tree_marketcap = go.Figure(go.Treemap(
+                    labels=df_filtered['Ticker'],
+                    parents=[selected_industry] * len(df_filtered),
+                    values=df_filtered['MarketCap'],
+                    text=df_filtered['Change'].apply(lambda x: f"({x:.2f}%)"),
+                    textinfo="label+text",
+                    textfont=dict(color='white', size=16),
+                    customdata=df_filtered[['Change', 'close', 'MarketCap']],
+                    hovertemplate=(
+                        "<b>%{label}</b><br>"
+                        "Thay đổi: %{customdata[0]:.2f}%<br>"
+                        "Giá đóng cửa: %{customdata[1]:,.0f}<br>"
+                        "Vốn hóa: %{customdata[2]:,.0f}<br>"
+                        "<extra></extra>"
+                    ),
+                    marker=dict(
+                        colors=df_filtered['color'].apply(
+                            lambda x: '#2ECC71' if x == 'green' else ('#E74C3C' if x == 'red' else '#F1C40F')
+                        )
+                    )
+                ))
+
+                fig_tree_marketcap.update_layout(
+                    title="💰 Tree Map – Vốn hóa thị trường và Biến động giá",
+                    margin=dict(t=50, l=25, r=25, b=25)
+                )
+
+                st.plotly_chart(fig_tree_marketcap, use_container_width=True)
 
                 # ==== Biểu đồ 2: So sánh % thay đổi giữa các cổ phiếu trong ngành ====
                 st.subheader(f"📊 So sánh % thay đổi giữa các cổ phiếu – {selected_industry}")
@@ -1848,6 +1900,82 @@ with tab6:
                     )
 
                     st.plotly_chart(fig_market, use_container_width=True)
+                    
+                # Nếu chưa có MarketCap thì tạo giá trị tạm thay thế để biểu đồ vẫn hoạt động
+                if 'MarketCap' not in df.columns:
+                    df['MarketCap'] = df['close']  # Hoặc df['Volume'] nếu phù hợp hơn
+
+                # Phân loại thay đổi
+                df['change_category'] = pd.cut(
+                    df['Change'],
+                    bins=[-float('inf'), -0.01, 0.01, float('inf')],
+                    labels=['Giảm', 'Không đổi', 'Tăng']
+                )
+
+                # Tính toán tổng quan theo ngành
+                df_market = df.groupby('Industry').agg({
+                    'MarketCap': 'sum',
+                    'Change': 'mean',
+                    'Volume': 'sum'
+                }).reset_index()
+
+                # Đếm số mã tăng/giảm/không đổi
+                industry_counts = df.groupby(['Industry', 'change_category']).size().unstack(fill_value=0).reset_index()
+
+                # Kết hợp dữ liệu
+                df_combined = pd.merge(df_market, industry_counts, on='Industry')
+                
+                # Tính toán tổng hợp theo nhóm ngành
+                df_market = df.groupby('Industry').agg({
+                    'close': 'mean',
+                    'Change': 'mean',
+                    'Volume': 'sum',
+                    'MarketCap': 'sum'
+                }).reset_index()
+
+                # Gán nhãn màu theo mức thay đổi
+                df_market['color'] = df_market['Change'].apply(
+                    lambda x: 'green' if x > 0.01 else ('red' if x < -0.01 else 'yellow')
+                )
+
+                # Gán nhãn chi tiết hiển thị
+                df_market['label_text'] = df_market.apply(
+                    lambda row: f"{row['Industry']}<br>({row['Change']:.2f}%)", axis=1
+                )
+
+                # Vẽ Treemap tổng quan vốn hóa thị trường
+                fig_tree = go.Figure(go.Treemap(
+                    labels=df_market['label_text'],  # Nhãn hiển thị gồm tên ngành + % thay đổi
+                    parents=[""] * len(df_market),  # Không có cấp cha
+                    values=df_market['MarketCap'],  # Dùng vốn hóa làm kích thước (có thể đổi sang Volume)
+                    textinfo="label",  # Chỉ hiển thị label (đã chứa % rồi)
+                    textfont=dict(color='white', size=16),
+                    customdata=df_market[['Change', 'close', 'Volume', 'MarketCap']].values,
+                    hovertemplate=(
+                        "<b>%{label}</b><br>"
+                        "Thay đổi TB: %{customdata[0]:.2f}%<br>"
+                        "Giá TB: %{customdata[1]:.2f}<br>"
+                        "Khối lượng: %{customdata[2]:,}<br>"
+                        "Vốn hóa: %{customdata[3]:,}<br>"
+                        "<extra></extra>"
+                    ),
+                    marker=dict(
+                        colors=df_market['color'].map({
+                            'green': '#2ECC71',
+                            'red': '#E74C3C',
+                            'yellow': '#F1C40F'
+                        })
+                    )
+                ))
+
+                fig_tree.update_layout(
+                    title="📊 Treemap tổng quan thị trường theo nhóm ngành",
+                    margin=dict(t=40, l=10, r=10, b=10),
+                    height=600
+                )
+
+                # Hiển thị trên Streamlit
+                st.plotly_chart(fig_tree, use_container_width=True)    
 
                 # ==== Biểu đồ 2: Biểu đồ thay đổi giá trung bình theo ngành ====
                 st.subheader("📈 Biểu đồ thay đổi giá trung bình theo ngành")
