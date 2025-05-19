@@ -1942,6 +1942,15 @@ with tab6:
                 df_market['label_text'] = df_market.apply(
                     lambda row: f"{row['Industry']}<br>({row['Change']:.2f}%)", axis=1
                 )
+                
+                # Tổng hợp vốn hóa theo ngành
+                df_cap = df.groupby('Industry').agg({
+                    'MarketCap': 'sum'
+                }).reset_index()
+                
+                # Đổi đơn vị nếu cần (ví dụ chia thành tỷ)
+                df_cap['MarketCap'] = df_cap['MarketCap'] / 1e9  # từ đồng sang tỷ đồng (VND)
+                df_cap = df_cap.sort_values(by='MarketCap', ascending=False)
 
                 # Vẽ Treemap tổng quan vốn hóa thị trường
                 fig_tree = go.Figure(go.Treemap(
@@ -1969,13 +1978,40 @@ with tab6:
                 ))
 
                 fig_tree.update_layout(
-                    title="📊 Treemap tổng quan thị trường theo nhóm ngành",
+                    title="📊 Treemap tổng quan thị trường theo vốn hóa",
                     margin=dict(t=40, l=10, r=10, b=10),
                     height=600
                 )
 
                 # Hiển thị trên Streamlit
-                st.plotly_chart(fig_tree, use_container_width=True)    
+                st.plotly_chart(fig_tree, use_container_width=True)
+
+                # Vẽ biểu đồ vốn hóa theo nhóm ngành
+                fig_cap = go.Figure()
+
+                fig_cap.add_trace(go.Bar(
+                    x=df_cap['Industry'],
+                    y=df_cap['MarketCap'],
+                    text=df_cap['MarketCap'].round(1),
+                    textposition='outside',
+                    marker=dict(color=df_cap['MarketCap'], colorscale='Viridis'),
+                    hovertemplate=(
+                        '<b>%{x}</b><br>'
+                        'Vốn hóa: %{y:,.0f} tỷ VND<br>'  # Định dạng số với dấu phẩy phân tách
+                        '<extra></extra>'
+                    )
+                ))
+
+                fig_cap.update_layout(
+                    title='💰 Vốn hóa các nhóm ngành trên thị trường',
+                    xaxis_title='Nhóm ngành',
+                    yaxis_title='Vốn hóa (tỷ VND)',
+                    xaxis_tickangle=-45,
+                    height=500,
+                    margin=dict(t=60, l=10, r=10, b=40)
+                )
+
+                st.plotly_chart(fig_cap, use_container_width=True)    
 
                 # ==== Biểu đồ 2: Biểu đồ thay đổi giá trung bình theo ngành ====
                 st.subheader("📈 Biểu đồ thay đổi giá trung bình theo ngành")
