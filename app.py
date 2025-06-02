@@ -22,7 +22,7 @@ import plotly.figure_factory as ff
 
 
 st.set_page_config(page_title='Phân Tích Cổ Phiếu', layout='wide')
-tab1, tab2, tab3, tab4, tab6, tab8 = st.tabs([
+tab1, tab2, tab3, tab4, tab6,tab8 = st.tabs([
     '💰 Phân Tích Dòng Tiền Cổ Phiếu',
     '🗃️ Phân Tích Dòng Tiền Theo Nhóm',    
     '📊 Biểu Đồ Giá',
